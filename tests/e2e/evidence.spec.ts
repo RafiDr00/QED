@@ -12,7 +12,12 @@ import {
   cropToInk,
   decodePng,
 } from "../../scripts/png.ts";
-import { sweepContrast, sweepGlyphFills, sweepHoverStates } from "./sweep.ts";
+import {
+  sweepContrast,
+  sweepFocusStates,
+  sweepGlyphFills,
+  sweepHoverStates,
+} from "./sweep.ts";
 
 /**
  * The evidence run. It produces the files verify.ts reads for G1, G5, G6, G8
@@ -172,9 +177,12 @@ test("contrast, a11y and screenshots across every route and both themes", async 
         }
       }
 
-      // Now disturb the page: hover every link and button and read the
-      // colours each state produces.
-      for (const pair of await sweepHoverStates(page)) {
+      // Now disturb the page: hover and focus every link and button, and read
+      // the colours each state produces.
+      for (const pair of [
+        ...(await sweepHoverStates(page)),
+        ...(await sweepFocusStates(page)),
+      ]) {
         const fg = parseColor(pair.fg);
         const bg = parseColor(pair.bg);
         if (!fg || !bg) continue;
@@ -234,6 +242,9 @@ test.describe("mark optics", () => {
       cutSideFraction: number;
       cornerIsSquare: boolean;
       cornerRadiusFraction: number;
+      cutAngleDegrees: number;
+      bottomLeftIsInk: boolean;
+      topRightIsInk: boolean;
       inkFraction: number;
     }[] = [];
 
@@ -304,9 +315,41 @@ test.describe("mark optics", () => {
         inset++;
       }
 
+      // The cut's angle, sampled at two rows well inside the cut band.
+      //
+      // Scanning down from the top finds the rounded top-right corner first
+      // and reports the angle of the whole right-hand side rather than of the
+      // cut. The cut covers the bottom 46% (52% for the small mark), so two
+      // rows at 8% and 35% up from the bottom are both on the diagonal, in
+      // either file.
+      const lastInkIn = (y: number) => {
+        for (let x = maxX; x >= minX; x--) {
+          if (isInk(bitmap, y * bitmap.width + x)) return x;
+        }
+        return minX;
+      };
+      const near = maxY - Math.max(1, Math.round(boxHeight * 0.08));
+      const far = maxY - Math.max(2, Math.round(boxHeight * 0.35));
+      const run = lastInkIn(far) - lastInkIn(near);
+      const rise = near - far;
+      const cutAngleDegrees =
+        run <= 0 ? 90 : (Math.atan2(rise, run) * 180) / Math.PI;
+
+      // Orientation: the cut belongs in the bottom-right corner and nowhere
+      // else. A mirrored or rotated mark keeps every path byte verbatim, so
+      // G4 cannot see it - the other three corners can. Sampled inside the
+      // corner, because the large mark rounds them.
+      const cornerInset = Math.max(2, Math.round(boxWidth * 0.15));
+      const solid = (x: number, y: number) => isInk(bitmap, y * bitmap.width + x);
+      const bottomLeftIsInk = solid(minX + cornerInset, maxY - cornerInset);
+      const topRightIsInk = solid(maxX - cornerInset, minY + cornerInset);
+
       renders.push({
         size,
         variant,
+        cutAngleDegrees,
+        bottomLeftIsInk,
+        topRightIsInk,
         cutEdgeFraction: halfWidth === 0 ? 0 : cut / halfWidth,
         cutSideFraction: boxWidth === 0 ? 0 : cutFromRight / boxWidth,
         cornerIsSquare,

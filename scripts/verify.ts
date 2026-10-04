@@ -689,6 +689,9 @@ interface MarkEvidence {
     cutSideFraction: number;
     cornerIsSquare: boolean;
     cornerRadiusFraction: number;
+    cutAngleDegrees: number;
+    bottomLeftIsInk: boolean;
+    topRightIsInk: boolean;
     inkFraction: number;
   }[];
 }
@@ -755,6 +758,28 @@ const g5: Gate = {
           `${size}px: the corner rounds at ${round2(render.cornerRadiusFraction * 100)}% of the side, and '${expected}' rounds at ${round2(spec.radius * 100)}%`,
         );
       }
+      // "The cut stays razor-sharp against them" - and at 45 degrees, the
+      // same angle as the wordmark's `e` aperture. One geometric idea, twice.
+      if (Math.abs(render.cutAngleDegrees - 45) > 4) {
+        failures.push(
+          `${size}px: the cut runs at ${round2(render.cutAngleDegrees)} degrees, and the system cuts at 45`,
+        );
+      }
+
+      // The cut is in the bottom-right corner. Both other corners stay solid,
+      // which is what a mirrored or rotated mark would break while keeping
+      // every path byte identical.
+      if (!render.bottomLeftIsInk) {
+        failures.push(
+          `${size}px: the bottom-left corner is cut away - the mark is mirrored or rotated`,
+        );
+      }
+      if (!render.topRightIsInk) {
+        failures.push(
+          `${size}px: the top-right corner is cut away - the mark is rotated`,
+        );
+      }
+
       if (render.cornerIsSquare !== spec.cornerIsSquare) {
         failures.push(
           `${size}px: corner is ${render.cornerIsSquare ? "square" : "smoothed"}, and '${expected}' has ${spec.cornerIsSquare ? "square" : "smoothed"} corners`,
@@ -763,7 +788,7 @@ const g5: Gate = {
 
       notes.push(
         `${size}px ${render.variant}: cut ${round2(render.cutSideFraction * 100)}% of the side ` +
-          `(${render.cornerIsSquare ? "square" : "smoothed"} corners, radius ${round2(render.cornerRadiusFraction * 100)}%), ` +
+          `(${render.cornerIsSquare ? "square" : "smoothed"} corners, radius ${round2(render.cornerRadiusFraction * 100)}%, cut at ${round2(render.cutAngleDegrees)} deg), ` +
           `${round2(render.cutEdgeFraction * 100)}% of the quadrant edge, ink ${round2(render.inkFraction * 100)}%`,
       );
     }

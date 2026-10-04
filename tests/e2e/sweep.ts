@@ -69,6 +69,58 @@ export async function sweepGlyphFills(page: Page): Promise<SweptPair[]> {
 }
 
 /**
+ * Focus states. A keyboard user reads the page in these, and the resting
+ * sweep never sees them - the ring is asserted elsewhere, but the text colour
+ * underneath it is not.
+ */
+export async function sweepFocusStates(
+  page: Page,
+  limit = 14,
+): Promise<SweptPair[]> {
+  const out: SweptPair[] = [];
+  const targets = await page
+    .locator("a:visible, button:visible:not(:disabled)")
+    .all();
+
+  for (const target of targets.slice(0, limit)) {
+    try {
+      await target.focus({ timeout: 1000 });
+    } catch {
+      continue;
+    }
+    const pair = await target.evaluate((el) => {
+      const OPAQUE = (value: string) =>
+        value !== "" &&
+        value !== "transparent" &&
+        !/rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*0\s*\)/.test(value);
+      const style = getComputedStyle(el);
+      let ground = OPAQUE(style.backgroundColor) ? style.backgroundColor : "";
+      let current: Element | null = el.parentElement;
+      while (ground === "" && current) {
+        const background = getComputedStyle(current).backgroundColor;
+        if (OPAQUE(background)) ground = background;
+        current = current.parentElement;
+      }
+      if (ground === "") ground = getComputedStyle(document.body).backgroundColor;
+      return {
+        selector: `${el.tagName.toLowerCase()}:focus`,
+        sample: el.textContent.trim().slice(0, 40),
+        fg: style.color,
+        bg: ground,
+        fontSize: parseFloat(style.fontSize),
+        fontWeight: Number(style.fontWeight) || 400,
+      };
+    });
+    if (pair.sample !== "") out.push(pair);
+  }
+
+  await page.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+  });
+  return out;
+}
+
+/**
  * Hover and active states, which the resting sweep cannot see. A link that
  * turns unreadable on hover is still unreadable.
  */

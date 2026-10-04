@@ -53,11 +53,11 @@ one, a realistic violation of the property it names that would still pass:
 
 | | Blind spot |
 | --- | --- |
-| **G1** | It sweeps the resting page, every hover state, and the verdict glyphs' SVG fills. `:active` and `:focus` colours are still unmeasured. |
+| **G1** | It sweeps the resting page, every hover state, every focus state, and the verdict glyphs' SVG fills. `:active` colours are still unmeasured — forcing them needs a held pointer. |
 | **G2** | It reads source files. A design value computed at runtime, or passed in as a number and turned into a length in JS, never appears in a file it scans. |
 | **G3** | It reads built CSS. A length set through an inline `style` attribute, or hidden inside a `calc()`, is not on the grid it checks. |
-| **G4** | It proves the viewBox, every path and every rect are verbatim. It says nothing about the transform around them — a mark rendered mirrored or rotated passes. The lockup test covers that at one size; the rest is unguarded. |
-| **G5** | It measures the cut, the corner radius and the variant at the four declared sizes. A mark drawn at some other size, or on a ground that swallows it, is never looked at — and it never checks the 45° cut angle. |
+| **G4** | It proves the viewBox, every path and every rect are verbatim. It says nothing about the transform around them — but G5 measures the render, and a mirrored or rotated mark fails four of its checks. |
+| **G5** | It measures the cut, its 45° angle, the corner radius, the variant and the orientation at the four declared sizes. A mark drawn at some other size, or on a ground that swallows it, is never looked at. |
 | **G6** | It proves the two themes differ, that neither shot is blank, and that Void is the darker one. It still cannot tell a correct palette from a wrong one — a theme that swapped `proof` and `break` would pass. |
 | **G7** | It proves each negative test fails with at least the number of errors the file declares. An illegal state nobody wrote a case for is still unguarded. |
 | **G8** | axe finds a minority of WCAG failures. It does not judge focus order, whether a label is a good label, or whether the page makes sense. The keyboard walkthrough in `flows.spec.ts` covers some of that; a reader covers the rest. |
