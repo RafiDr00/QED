@@ -85,20 +85,13 @@ hex, px or `rgb()` literal outside `packages/tokens` fails the build there.
 
 ## Visual regression
 
-Baselines live in `tests/e2e/visual.spec.ts-snapshots/` and are committed. They
-are per-platform, and the ones here are Windows, so CI sets `QED_SKIP_VISUAL=1`
-and skips that spec: on Linux Playwright would have no baseline to compare
-against, and a run that writes the baseline it then passes against is not a
-check.
+Baselines live in `tests/e2e/visual.spec.ts-snapshots/` and are committed, for
+Windows and for Linux, so the gate runs locally *and* in CI against a baseline
+nobody wrote during the run.
 
-To put visual regression in CI, generate Linux baselines once in the official
-container and commit them beside the Windows ones:
-
-```
-docker run --rm -v "$PWD":/w -w /w mcr.microsoft.com/playwright:v1.63.0-noble   bash -c "corepack enable && pnpm install --frozen-lockfile && pnpm build            && pnpm exec playwright test tests/e2e/visual.spec.ts --update-snapshots=all"
-```
-
-Then drop `QED_SKIP_VISUAL` from the workflow.
+Accept a deliberate change locally with `pnpm e2e --update-snapshots`, then
+regenerate the Linux pair by dispatching the `baselines` workflow and copying
+its artifact over `tests/e2e/visual.spec.ts-snapshots/`.
 
 ## Working on it
 
