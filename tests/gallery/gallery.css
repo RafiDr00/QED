@@ -58,3 +58,9 @@
 .gal-glyphs-large .qed-chip-word {
   display: none;
 }
+
+/* Matched to the xl lockup so the two can be compared pixel for pixel. */
+.gal-logotype-file {
+  height: var(--c-logo-xl);
+  width: auto;
+}

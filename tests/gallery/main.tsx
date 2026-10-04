@@ -5,6 +5,7 @@ import "@qed/tokens/tokens.css";
 import "@qed/ui/ui.css";
 import "./gallery.css";
 
+import logotypeUrl from "@qed/ui/assets/logos/qed-logotype.svg";
 import {
   Attestation,
   Button,
@@ -140,6 +141,24 @@ function Gallery() {
           <Logo variant="wordmark" size="md" decorative />
         </div>
       </Shot>
+
+      {/*
+        The design system's own logotype file, drawn at the size where its
+        baked-in smoothed mark is the correct one. The composed lockup beside
+        it must be pixel-identical: composing it is what lets the small mark be
+        used lower down, and it must not have moved anything.
+      */}
+      <section className="gal-shot" aria-label="Lockup fidelity">
+        <p className="gal-shot-name">
+          <Label>LOCKUP VS THE SHIPPED FILE</Label>
+        </p>
+        <div className="gal-row">
+          <span data-lockup-composed>
+            <Logo variant="lockup" size="xl" decorative />
+          </span>
+          <img data-lockup-file src={logotypeUrl} alt="" className="gal-logotype-file" />
+        </div>
+      </section>
 
       <Shot name="LogoMarks">
         <div className="gal-row gal-marks">
