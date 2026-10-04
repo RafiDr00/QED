@@ -63,8 +63,15 @@ export interface LabelProps {
  * with text-transform (tokens.json, `label`), so the DOM text is what a screen
  * reader and a copy-paste both get.
  */
+/**
+ * `process` does not exist in a browser, and a bundler only substitutes the
+ * dotted form, so the guard checks before it reads.
+ */
+const DEV =
+  typeof process !== "undefined" && process.env["NODE_ENV"] !== "production";
+
 export function Label({ children, id, tone = "muted" }: LabelProps) {
-  if (process.env["NODE_ENV"] !== "production" && /[a-z]/.test(children)) {
+  if (DEV && /[a-z]/.test(children)) {
     console.warn(
       `<Label> expects capitals in the markup, not text-transform: received "${children}"`,
     );

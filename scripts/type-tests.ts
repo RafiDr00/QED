@@ -51,7 +51,7 @@ function compile(file: string): Outcome {
     [TSC_BIN, ...TSC_FLAGS, join(dir, file)],
     { cwd: root, encoding: "utf8" },
   );
-  const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+  const output = `${result.stdout}${result.stderr}`;
   const all = output
     .split(/\r?\n/)
     .filter((line) => /error TS\d+/.test(line) && line.includes(file));

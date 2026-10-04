@@ -60,6 +60,7 @@
 
 .qed-numeral {
   color: var(--ink);
+  margin-right: var(--space-2);
 }
 
 .qed-evidence-note {

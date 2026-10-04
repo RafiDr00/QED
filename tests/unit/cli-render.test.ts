@@ -39,7 +39,9 @@ const RUN: RunResult = {
   ],
 };
 
-const stripAnsi = (s: string) => s.replace(/\u001b\[[0-9;]*m/g, "");
+// eslint-disable-next-line no-control-regex -- removing the escapes is the point
+const ANSI = /\u001b\[[0-9;]*m/g;
+const stripAnsi = (s: string) => s.replace(ANSI, "");
 
 describe("renderRun", () => {
   it("is deterministic", () => {

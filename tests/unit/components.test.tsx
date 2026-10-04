@@ -17,32 +17,34 @@ import {
 
 /** Behaviour, not markup. Nothing here asserts a class name. */
 
-const RUNS: FunctionRun[] = [
-  {
-    path: "billing/tax.go",
-    symbol: "computeVat",
-    verdict: { state: "EQUIVALENT", inputs: 18402 },
-  },
-  {
-    path: "orders/pricing.ts",
-    symbol: "bulkRate",
-    verdict: {
-      state: "DIVERGED",
-      counterexample: {
-        input: '{ qty: 100 }',
-        base: "0.85",
-        head: "0.8",
-        repro: "qed repro 9f2a1c",
-        foundAt: { index: 7, of: 9110 },
-      },
+const EQUIVALENT: FunctionRun = {
+  path: "billing/tax.go",
+  symbol: "computeVat",
+  verdict: { state: "EQUIVALENT", inputs: 18402 },
+};
+
+const DIVERGED: FunctionRun = {
+  path: "orders/pricing.ts",
+  symbol: "bulkRate",
+  verdict: {
+    state: "DIVERGED",
+    counterexample: {
+      input: "{ qty: 100 }",
+      base: "0.85",
+      head: "0.8",
+      repro: "qed repro 9f2a1c",
+      foundAt: { index: 7, of: 9110 },
     },
   },
-  {
-    path: "api/handlers.go",
-    symbol: "CreateOrder",
-    verdict: { state: "ABSTAINED", obstruction: "opens a database connection" },
-  },
-];
+};
+
+const ABSTAINED: FunctionRun = {
+  path: "api/handlers.go",
+  symbol: "CreateOrder",
+  verdict: { state: "ABSTAINED", obstruction: "opens a database connection" },
+};
+
+const RUNS: FunctionRun[] = [EQUIVALENT, DIVERGED, ABSTAINED];
 
 const RECORD: AttestationRecord = {
   symbol: "computeVat",
@@ -70,12 +72,12 @@ describe("VerdictChip", () => {
   });
 
   it("prints the input count on a proven verdict", () => {
-    render(<VerdictChip verdict={RUNS[0]!.verdict} />);
+    render(<VerdictChip verdict={EQUIVALENT.verdict} />);
     expect(screen.getByText("18,402 inputs")).toBeInTheDocument();
   });
 
   it("prints the obstruction on an abstention, not a euphemism", () => {
-    render(<VerdictChip verdict={RUNS[2]!.verdict} />);
+    render(<VerdictChip verdict={ABSTAINED.verdict} />);
     expect(
       screen.getByText("opens a database connection"),
     ).toBeInTheDocument();

@@ -67,7 +67,7 @@ describe("every verdict carries evidence", () => {
     fc.assert(
       fc.property(anyVerdict, (verdict) => {
         const { container } = render(<VerdictChip verdict={verdict} />);
-        const text = container.textContent ?? "";
+        const text = container.textContent;
         expect(text).toContain(verdict.state);
         const evidence = text.slice(text.indexOf(verdict.state) + verdict.state.length);
         expect(evidence.trim().length).toBeGreaterThan(0);
@@ -83,7 +83,7 @@ describe("every verdict carries evidence", () => {
         const { container } = render(
           <VerdictChip verdict={{ state: "EQUIVALENT", inputs }} />,
         );
-        expect(container.textContent ?? "").toMatch(/[\d,]+ inputs/);
+        expect(container.textContent).toMatch(/[\d,]+ inputs/);
         cleanup();
       }),
       { numRuns: 100 },
@@ -94,7 +94,7 @@ describe("every verdict carries evidence", () => {
     fc.assert(
       fc.property(anyVerdict, (verdict) => {
         const { container } = render(<VerdictChip verdict={verdict} />);
-        const text = container.textContent ?? "";
+        const text = container.textContent;
         // An obstruction could legitimately contain a percent sign; the
         // generated ones never do, so any % here came from the component.
         expect(text).not.toMatch(/\d\s*%/);

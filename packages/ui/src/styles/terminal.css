@@ -11,6 +11,19 @@
   max-width: var(--c-pane-max);
 }
 
+/*
+ * Paper puts the pane on `bg-raised` instead.
+ *
+ * `proof` is #06824a on Paper, darkened by the design system to clear 4.5:1
+ * on the page ground - and it does, at 4.64:1. On `bg-sunk` (#f1efe8) the same
+ * green is 4.24:1, so EQUIVALENT in a printed terminal would fail the system's
+ * own contrast rule. Void keeps true black, where the output is the hero.
+ * DECISIONS.md D-005.
+ */
+[data-theme="paper"] .qed-pane {
+  background: var(--bg-raised);
+}
+
 .qed-pane-banner {
   display: flex;
   align-items: center;

@@ -44,8 +44,8 @@
     },
     {
       "name": "pane-max",
-      "value": "688px",
-      "source": "components/Terminal/preview.html - 'max-width:690px', moved onto the 4px grid."
+      "value": "760px",
+      "source": "components/Terminal/preview.html - 'max-width:690px'. Widened to the next 4px step that fits a real run: at 690px a one-clause abstain reason is cut off, and the README's alignment rule ('a verdict list that wraps is a verdict list nobody reads') matters more than the preview's width."
     },
     {
       "name": "card-max",

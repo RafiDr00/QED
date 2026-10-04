@@ -22,14 +22,26 @@ import { Table } from "./Table.js";
  * and survives a greyscale print.
  */
 const DISC = "M6 1A5 5 0 1 1 6 11A5 5 0 1 1 6 1Z";
-const SALTIRE =
-  "M6 7.414L4.374 9.041L2.959 7.626L4.586 6L2.959 4.374L4.374 2.959" +
-  "L6 4.586L7.626 2.959L9.041 4.374L7.414 6L9.041 7.626L7.626 9.041Z";
+/**
+ * The cross is upright, and it cuts all the way to the rim.
+ *
+ * Both details are forced by the 9px the design system specifies. A
+ * 45-degree knockout lands between pixels at that size and silts up; an
+ * axis-aligned one keeps its arms on the pixel grid. And a cross that stops
+ * short of the edge leaves the circumference unbroken, so the glyph reads as
+ * the hollow ABSTAINED ring with something in it - which is the one confusion
+ * this glyph exists to prevent. Reaching the rim leaves four separate wedges
+ * instead. The arm corners sit exactly on the circle, so nothing spills
+ * outside it. DECISIONS.md D-007.
+ */
+const CROSS =
+  "M7 7L7 10.899L5 10.899L5 7L1.101 7L1.101 5L5 5L5 1.101" +
+  "L7 1.101L7 5L10.899 5L10.899 7Z";
 const INNER = "M6 3A3 3 0 1 0 6 9A3 3 0 1 0 6 3Z";
 
 const GLYPH_PATH: Readonly<Record<VerdictState, string>> = {
   EQUIVALENT: DISC,
-  DIVERGED: `${DISC}${SALTIRE}`,
+  DIVERGED: `${DISC}${CROSS}`,
   ABSTAINED: `${DISC}${INNER}`,
 };
 

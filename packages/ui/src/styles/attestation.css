@@ -83,12 +83,17 @@
   overflow-wrap: anywhere;
 }
 
-.qed-verify-status:empty {
-  display: none;
-}
-
 .qed-verify-status {
   margin-top: var(--space-3);
+}
+
+/*
+ * Empty, the status line takes no space - but it stays in the document and in
+ * the accessibility tree. A live region that is display:none until it has
+ * something to say is a live region a screen reader never announces.
+ */
+.qed-verify-status:empty {
+  margin-top: 0;
 }
 
 @media (max-width: 560px) {

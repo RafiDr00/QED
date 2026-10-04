@@ -1,0 +1,60 @@
+/* Layout for the component index. Not shipped with either product. */
+
+.gal {
+  padding: var(--space-8) var(--space-12) var(--space-16);
+  display: grid;
+  gap: var(--space-12);
+  max-width: var(--c-page-max);
+}
+
+.gal-title {
+  margin-bottom: var(--space-4);
+}
+
+.gal-shot {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.gal-shot-name {
+  margin: 0;
+}
+
+.gal-shot-body {
+  padding: var(--space-6);
+  border: var(--border-hair) solid var(--rule);
+  border-radius: var(--radius-2);
+  background: var(--bg);
+}
+
+.gal-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  flex-wrap: wrap;
+}
+
+.gal-marks {
+  align-items: flex-end;
+}
+
+.gal-mark {
+  display: block;
+  background: var(--bg);
+}
+
+.gal-gap {
+  margin-top: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+
+/* The verdict glyph, blown up, so a greyscale comparison measures the shape
+   rather than the antialiasing around a 9px dot. */
+.gal-glyphs-large .qed-dot {
+  width: var(--c-logo-xl);
+  height: var(--c-logo-xl);
+}
+
+.gal-glyphs-large .qed-chip-word {
+  display: none;
+}

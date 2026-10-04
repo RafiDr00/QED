@@ -127,6 +127,8 @@ const DECLARED_PAIRS: {
   bg: string;
   kind: "body" | "large" | "nonText";
   where: string;
+  /** Omitted means both themes. */
+  themes?: string[];
 }[] = [
   { fg: "ink", bg: "bg", kind: "body", where: "page body copy" },
   { fg: "ink", bg: "bg-raised", kind: "body", where: "card body copy" },
@@ -137,7 +139,15 @@ const DECLARED_PAIRS: {
   { fg: "ink-muted", bg: "bg-sunk", kind: "body", where: "terminal evidence" },
   { fg: "proof", bg: "bg", kind: "body", where: "links, EQUIVALENT" },
   { fg: "proof", bg: "bg-raised", kind: "body", where: "verdict chip word" },
-  { fg: "proof", bg: "bg-sunk", kind: "body", where: "terminal EQUIVALENT" },
+  {
+    fg: "proof",
+    bg: "bg-sunk",
+    kind: "body",
+    where: "terminal EQUIVALENT",
+    // Void only: on Paper the pane sits on bg-raised, because `proof` is
+    // 4.24:1 on bg-sunk there. See terminal.css and DECISIONS.md D-005.
+    themes: ["void"],
+  },
   { fg: "break", bg: "bg", kind: "body", where: "DIVERGED" },
   { fg: "break", bg: "bg-raised", kind: "body", where: "verdict chip word" },
   { fg: "break", bg: "bg-sunk", kind: "body", where: "terminal DIVERGED" },
@@ -195,8 +205,11 @@ const g1: Gate = {
     const failures: string[] = [];
     const notes: string[] = [];
 
+    let checked = 0;
     for (const theme of themeIds) {
       for (const pair of DECLARED_PAIRS) {
+        if (pair.themes && !pair.themes.includes(theme)) continue;
+        checked++;
         const fg = tokenHex(pair.fg, theme);
         const bg = tokenHex(pair.bg, theme);
         const ratio = round2(contrastHex(fg, bg));
@@ -208,9 +221,7 @@ const g1: Gate = {
         }
       }
     }
-    notes.push(
-      `${DECLARED_PAIRS.length * themeIds.length} declared token pairs checked`,
-    );
+    notes.push(`${checked} declared token pairs checked across both themes`);
     notes.push(
       `hairline exemption recorded for ${BORDER_EXEMPTIONS.join(", ")} (DECISIONS.md D-004)`,
     );
@@ -286,6 +297,24 @@ function lineOf(text: string, index: number): number {
 }
 
 /**
+ * Blanks comments, keeping every byte offset, so the scan reads code rather
+ * than prose. A comment that explains why the focus ring is 2px is not a
+ * hard-coded 2px.
+ */
+function withoutComments(text: string, kind: "ts" | "css" | "other"): string {
+  const blank = (match: string) => match.replace(/[^\n]/g, " ");
+  let out = text.replace(/\/\*[\s\S]*?\*\//g, blank);
+  if (kind === "ts") {
+    // Line comments only; a URL's "//" never starts one at the line level here.
+    out = out.replace(/(^|[\s;,({[])\/\/[^\n]*/g, (m) => blank(m));
+  }
+  if (kind === "other") {
+    out = out.replace(/<!--[\s\S]*?-->/g, blank);
+  }
+  return out;
+}
+
+/**
  * A media query cannot read a custom property, so breakpoints are the one
  * place a px literal has to appear in a stylesheet. They are still declared -
  * in packages/tokens/src/component-tokens.json as `bp-*` - and this gate
@@ -319,7 +348,14 @@ const g2: Gate = {
         const r = rel(file);
         if (PURITY_EXEMPT.some((re) => re.test(r))) continue;
         scanned++;
-        const original = readFileSync(file, "utf8");
+        const extension = extname(file);
+        const kind =
+          extension === ".ts" || extension === ".tsx"
+            ? "ts"
+            : extension === ".css"
+              ? "css"
+              : "other";
+        const original = withoutComments(readFileSync(file, "utf8"), kind);
 
         // Check breakpoints against the declared set, then blank the preludes
         // so the length scan does not see them twice.
@@ -853,6 +889,31 @@ const g10: Gate = {
     if (evidence.pairwiseDifference.length < 3) {
       failures.push("fewer than 3 glyph comparisons recorded");
     }
+
+    // And again at the 9px the chips actually render, which is the size a
+    // reader has to tell them apart at.
+    const shipped = readEvidence("glyphs-9px.json") as {
+      shippedSize: { a: string; b: string; ratio: number }[];
+    } | null;
+    if (!shipped) {
+      failures.push("no .verify/glyphs-9px.json from the e2e run");
+    } else {
+      for (const pair of shipped.shippedSize) {
+        if (pair.ratio < 0.08) {
+          failures.push(
+            `at 9px, ${pair.a} and ${pair.b} differ on only ${round2(pair.ratio * 100)}% of pixels in greyscale`,
+          );
+        } else {
+          notes.push(
+            `at 9px: ${pair.a} vs ${pair.b}, ${round2(pair.ratio * 100)}% of pixels differ`,
+          );
+        }
+      }
+      if (shipped.shippedSize.length < 3) {
+        failures.push("fewer than 3 glyph comparisons at the shipped size");
+      }
+    }
+
     return failures.length === 0 ? pass(notes) : fail(failures, notes);
   },
 };
