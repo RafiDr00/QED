@@ -1,0 +1,60 @@
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# `pnpm verify` is the definition of done, so CI runs exactly that - it builds,
+# typechecks, lints, runs the unit and type tests, produces fresh evidence with
+# Playwright, and then evaluates the ten gates. Any one of them failing fails
+# the build; that includes the ESLint rule that rejects a hex, px or rgb()
+# literal outside packages/tokens.
+#
+# The one exception is visual regression: the committed baselines are Windows
+# and CI is Linux. Generating them here would mean passing against a baseline
+# written moments earlier, which is not a check. QED_SKIP_VISUAL makes that
+# skip explicit rather than silent.
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      QED_SKIP_VISUAL: "1"
+      CI: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Verify
+        run: pnpm verify
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-evidence
+          path: |
+            .verify/*.json
+            .verify/shots
+            .verify/attestation.pdf
+          retention-days: 14

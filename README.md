@@ -9,7 +9,8 @@ could not both be satisfied is written down in [DECISIONS.md](DECISIONS.md).
 
 ```
 pnpm install
-pnpm verify      # the definition of done
+pnpm exec playwright install --with-deps chromium   # once
+pnpm verify                                          # the definition of done
 ```
 
 ## What is here
@@ -75,6 +76,29 @@ one, a realistic violation of the property it names that would still pass:
 | `pnpm e2e` | Playwright: evidence, flows, visual regression. |
 | `pnpm measure:fonts` | Re-measure the metric-matched fallbacks. Fails above a 1% residual shift. |
 | `pnpm build:logos` | Regenerate the typed logo module from the SVGs. |
+
+## CI
+
+`.github/workflows/verify.yml` runs `pnpm verify` on every push and pull
+request — the same command, the same ten gates. The ESLint rule that rejects a
+hex, px or `rgb()` literal outside `packages/tokens` fails the build there.
+
+## Visual regression
+
+Baselines live in `tests/e2e/visual.spec.ts-snapshots/` and are committed. They
+are per-platform, and the ones here are Windows, so CI sets `QED_SKIP_VISUAL=1`
+and skips that spec: on Linux Playwright would have no baseline to compare
+against, and a run that writes the baseline it then passes against is not a
+check.
+
+To put visual regression in CI, generate Linux baselines once in the official
+container and commit them beside the Windows ones:
+
+```
+docker run --rm -v "$PWD":/w -w /w mcr.microsoft.com/playwright:v1.63.0-noble   bash -c "corepack enable && pnpm install --frozen-lockfile && pnpm build            && pnpm exec playwright test tests/e2e/visual.spec.ts --update-snapshots=all"
+```
+
+Then drop `QED_SKIP_VISUAL` from the workflow.
 
 ## Working on it
 
