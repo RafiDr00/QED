@@ -44,3 +44,16 @@ export type { AttestationProps } from "./components/Attestation.js";
 
 export { TerminalOutput, terminalText } from "./components/TerminalOutput.js";
 export type { TerminalOutputProps } from "./components/TerminalOutput.js";
+
+export {
+  DEFAULT_THEME,
+  THEME_BOOTSTRAP,
+  THEME_LABEL,
+  THEME_STORAGE_KEY,
+  THEMES,
+  ThemeToggle,
+  readTheme,
+  setTheme,
+  useTheme,
+} from "./theme.js";
+export type { Theme, ThemeToggleProps } from "./theme.js";

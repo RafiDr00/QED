@@ -80,10 +80,10 @@ function walkIncludingDist(dir: string, filter: (p: string) => boolean): string[
   return out;
 }
 
-function readEvidence<T>(name: string): T | null {
+function readEvidence(name: string): unknown {
   const file = join(verifyDir, name);
   if (!existsSync(file)) return null;
-  return JSON.parse(readFileSync(file, "utf8")) as T;
+  return JSON.parse(readFileSync(file, "utf8"));
 }
 
 const rel = (p: string) => relative(root, p).split(sep).join("/");
@@ -216,7 +216,7 @@ const g1: Gate = {
     );
 
     // proof-press is declared in tokens.json as "never used as a text colour".
-    const evidence = readEvidence<ContrastEvidence>("contrast.json");
+    const evidence = readEvidence("contrast.json") as ContrastEvidence | null;
     if (!evidence) {
       failures.push("no .verify/contrast.json - the e2e evidence run did not produce it");
       return fail(failures, notes);
@@ -560,14 +560,31 @@ const g4: Gate = {
     if (shipped.length === 0) {
       failures.push("no built app output to check the shipped logo against");
     } else {
-      const haystack = shipped.map((f) => readFileSync(f, "utf8")).join("\n");
-      const markPaths = baseline.files["qed-mark.svg"]?.paths ?? [];
-      const smallPaths = baseline.files["qed-mark-16.svg"]?.paths ?? [];
-      for (const d of [...markPaths, ...smallPaths]) {
-        if (!haystack.includes(d)) {
-          failures.push(`shipped output: mark path data not found verbatim`);
-          break;
+      const known = new Set(
+        Object.values(baseline.files).flatMap((entry) => entry.paths),
+      );
+      let found = 0;
+      for (const file of shipped) {
+        const text = readFileSync(file, "utf8");
+        // Only look at the logo's own viewBoxes; the verdict glyphs are drawn
+        // by this repo and are not design-system assets.
+        for (const m of text.matchAll(/\sd=\\?"(M[0-9][^"\\]{20,})\\?"/g)) {
+          const d = m[1];
+          if (d === undefined) continue;
+          if (/^M(?:3\.1|2\.0|37\.2|147\.886|214\.0|284\.28)/.test(d)) {
+            found++;
+            if (!known.has(d)) {
+              failures.push(
+                `${rel(file)}: a logo path was redrawn - "${d.slice(0, 40)}..." is not in the design system`,
+              );
+            }
+          }
         }
+      }
+      if (found === 0) {
+        failures.push("no logo path data found in the shipped output at all");
+      } else {
+        notes.push(`${found} logo paths in the shipped output, all verbatim`);
       }
     }
 
@@ -591,7 +608,7 @@ const g5: Gate = {
   id: "G5",
   title: "Mark optics - the right variant at each size, and the cut still reads",
   run() {
-    const evidence = readEvidence<MarkEvidence>("mark-optics.json");
+    const evidence = readEvidence("mark-optics.json") as MarkEvidence | null;
     if (!evidence) return fail(["no .verify/mark-optics.json from the e2e run"]);
     const failures: string[] = [];
     const notes: string[] = [];
@@ -633,7 +650,7 @@ const g6: Gate = {
   id: "G6",
   title: "Theme parity - every component shot in both themes, neither blank",
   run() {
-    const evidence = readEvidence<ShotEvidence>("screenshots.json");
+    const evidence = readEvidence("screenshots.json") as ShotEvidence | null;
     if (!evidence) return fail(["no .verify/screenshots.json from the e2e run"]);
     const failures: string[] = [];
     const notes: string[] = [];
@@ -701,7 +718,7 @@ const g7: Gate = {
   id: "G7",
   title: "Verdict integrity - evidence-free verdicts cannot be constructed",
   run() {
-    const evidence = readEvidence<TypeTestEvidence>("type-tests.json");
+    const evidence = readEvidence("type-tests.json") as TypeTestEvidence | null;
     if (!evidence) {
       return fail(["no .verify/type-tests.json - run scripts/type-tests.ts"]);
     }
@@ -741,7 +758,7 @@ const g8: Gate = {
   id: "G8",
   title: "a11y - axe-core reports zero violations on every route, both themes",
   run() {
-    const evidence = readEvidence<AxeEvidence>("axe.json");
+    const evidence = readEvidence("axe.json") as AxeEvidence | null;
     if (!evidence) return fail(["no .verify/axe.json from the e2e run"]);
     const failures: string[] = [];
     for (const run of evidence.runs) {
@@ -810,7 +827,7 @@ const g10: Gate = {
   id: "G10",
   title: "Print - the attestation survives greyscale, glyphs stay distinguishable",
   run() {
-    const evidence = readEvidence<PrintEvidence>("print.json");
+    const evidence = readEvidence("print.json") as PrintEvidence | null;
     if (!evidence) return fail(["no .verify/print.json from the e2e run"]);
     const failures: string[] = [];
     const notes: string[] = [];

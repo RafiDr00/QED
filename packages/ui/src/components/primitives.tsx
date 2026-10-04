@@ -65,7 +65,6 @@ export interface LabelProps {
  */
 export function Label({ children, id, tone = "muted" }: LabelProps) {
   if (process.env["NODE_ENV"] !== "production" && /[a-z]/.test(children)) {
-    // eslint-disable-next-line no-console
     console.warn(
       `<Label> expects capitals in the markup, not text-transform: received "${children}"`,
     );

@@ -1,0 +1,134 @@
+/* The product shell: a header rule, a nav rule, and space. */
+
+.con-header {
+  border-bottom: var(--border-hair) solid var(--rule);
+  background: var(--bg-raised);
+}
+
+.con-header-inner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-3) var(--space-6);
+  flex-wrap: wrap;
+}
+
+.con-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.con-repo,
+.con-branch,
+.con-sub {
+  color: var(--ink-muted);
+}
+
+.con-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
+}
+
+.con-body {
+  display: grid;
+  grid-template-columns: 26ch 1fr;
+  align-items: start;
+}
+
+.con-nav {
+  border-right: var(--border-hair) solid var(--rule);
+  padding: var(--space-6);
+  position: sticky;
+  top: 0;
+}
+
+.con-nav ul {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.con-nav-link {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-1);
+  color: var(--ink-muted);
+  text-decoration: none;
+  border-left: var(--border-rule) solid transparent;
+}
+
+.con-nav-link:hover {
+  color: var(--ink);
+}
+
+.con-nav-link[aria-current="page"] {
+  color: var(--ink);
+  border-left-color: var(--proof);
+  background: var(--bg-raised);
+}
+
+.con-main {
+  padding: var(--space-8) var(--space-12) var(--space-16);
+  min-width: 0;
+}
+
+.con-main:focus {
+  outline: none;
+}
+
+.con-title {
+  margin-bottom: var(--space-8);
+}
+
+.con-count-label {
+  margin-top: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+
+.con-note {
+  margin-top: var(--space-4);
+}
+
+.con-export-actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+  flex-wrap: wrap;
+}
+
+.con-preview-label {
+  margin-bottom: var(--space-3);
+}
+
+/* The Paper preview brings its own ground with it. */
+.con-paper {
+  background: var(--bg);
+  padding: var(--space-6);
+  border: var(--border-hair) solid var(--rule);
+  border-radius: var(--radius-2);
+}
+
+@media (max-width: 720px) {
+  .con-body {
+    grid-template-columns: 1fr;
+  }
+
+  .con-nav {
+    border-right: 0;
+    border-bottom: var(--border-hair) solid var(--rule);
+    position: static;
+    padding: var(--space-4);
+  }
+
+  .con-nav ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .con-main {
+    padding: var(--space-6) var(--space-4) var(--space-12);
+  }
+}

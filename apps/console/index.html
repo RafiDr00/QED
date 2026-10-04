@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>QED Console</title>
+    <meta name="description" content="Runs, verdicts, attestations and the audit export for acme/ledger." />
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("qed-theme");
+          if (t === "paper" || t === "void") {
+            document.documentElement.setAttribute("data-theme", t);
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

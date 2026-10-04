@@ -43,9 +43,15 @@ export default tseslint.config(
     },
   },
   {
-    // The generator and the gates are allowed to name raw values: that is
-    // their job. Nothing they emit is hand-written downstream.
-    files: ["packages/tokens/**/*.ts", "scripts/**/*.ts", "tools/**/*.js"],
+    // The generator, the generated logo module and the gates are allowed to
+    // name raw values: that is their job. The logo module comes from the
+    // design system's own SVGs and G4 hashes it, so it cannot drift.
+    files: [
+      "packages/tokens/**/*.ts",
+      "packages/ui/src/generated/**/*.ts",
+      "scripts/**/*.ts",
+      "tools/**/*.js",
+    ],
     rules: { "qed/no-raw-design-values": "off" },
   },
   {

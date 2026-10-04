@@ -81,13 +81,18 @@ const componentTokens = (
 const themeIds = tokens.color.themes.map((t) => t.id);
 const primaryTheme = themeIds[0];
 if (primaryTheme === undefined) throw new Error("tokens.json: no themes");
+const primary: string = primaryTheme;
 
 /** A token missing a theme's value inherits the first theme's, per the system. */
-function colorFor(token: ColorToken, theme: ThemeId): string {
+function colorFor(
+  token: ColorToken,
+  theme: ThemeId,
+  primaryTheme: string,
+): string {
   if (typeof token.value === "string") return token.value;
   const direct = token.value[theme];
   if (direct !== undefined) return direct;
-  const fallback = token.value[primaryTheme!];
+  const fallback = token.value[primaryTheme];
   if (fallback === undefined) {
     throw new Error(`tokens.json: ${token.name} has no value in any theme`);
   }
@@ -104,7 +109,7 @@ const decl = (name: string, value: string) => `  --${name}: ${value};`;
 
 function themeBlock(theme: ThemeId): string {
   return tokens.color.tokens
-    .map((t) => decl(t.name, colorFor(t, theme)))
+    .map((t) => decl(t.name, colorFor(t, theme, primary)))
     .join("\n");
 }
 
@@ -202,7 +207,7 @@ const rawColor = JSON.stringify(
   Object.fromEntries(
     tokens.color.tokens.map((t) => [
       t.name,
-      Object.fromEntries(themeIds.map((th) => [th, colorFor(t, th)])),
+      Object.fromEntries(themeIds.map((th) => [th, colorFor(t, th, primary)])),
     ]),
   ),
   null,

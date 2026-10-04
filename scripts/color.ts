@@ -15,7 +15,7 @@ export function parseColor(input: string): Rgb | null {
     const h = hex[1];
     const expand = (s: string) => parseInt(s.repeat(2 / s.length), 16);
     if (h.length === 3 || h.length === 4) {
-      const [r, g, b, a] = [...h];
+      const [r, g, b, a] = [h[0], h[1], h[2], h[3]];
       if (r === undefined || g === undefined || b === undefined) return null;
       return {
         r: expand(r),
