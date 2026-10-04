@@ -1,0 +1,109 @@
+/*
+ * The one place the brand asserts itself: a 2px `proof` rule down the left
+ * edge, `proof-dim` behind it. Every line inside is `ink` - see the note in
+ * Attestation.tsx and DECISIONS.md D-002.
+ */
+
+.qed-attestation {
+  background: var(--proof-dim);
+  border: var(--border-hair) solid var(--rule);
+  border-left: var(--border-rule) solid var(--proof);
+  border-radius: var(--radius-2);
+  padding: var(--space-6);
+  max-width: var(--c-card-max);
+  color: var(--ink);
+}
+
+.qed-attestation-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.qed-attestation-title {
+  margin-bottom: var(--space-1);
+}
+
+.qed-attestation-subject {
+  margin-bottom: var(--space-6);
+  overflow-wrap: anywhere;
+}
+
+.qed-fields {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+
+.qed-field {
+  display: grid;
+  grid-template-columns: var(--c-field-column) 1fr;
+  gap: var(--space-6);
+  align-items: baseline;
+}
+
+.qed-field dd {
+  overflow-wrap: anywhere;
+}
+
+.qed-attestation-verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/*
+ * Inside the attestation the verdict is `ink`: the README forbids `proof`
+ * here, and `break`/`open` fall under 4.5:1 on this ground in both themes.
+ * The glyph carries the state, which is the system's first rule anyway.
+ */
+.qed-attestation .qed-dot {
+  fill: var(--ink);
+}
+
+.qed-attestation-evidence {
+  font-family: var(--type-mono-sm-family);
+  font-size: var(--type-mono-sm-size);
+  line-height: var(--type-mono-sm-line);
+}
+
+.qed-attestation-foot {
+  border-top: var(--border-hair) solid var(--rule);
+  padding-top: var(--space-4);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--space-6);
+  flex-wrap: wrap;
+}
+
+.qed-digest {
+  overflow-wrap: anywhere;
+}
+
+.qed-verify-status:empty {
+  display: none;
+}
+
+.qed-verify-status {
+  margin-top: var(--space-3);
+}
+
+@media (max-width: 560px) {
+  .qed-field {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+}
+
+@media print {
+  .qed-attestation {
+    break-inside: avoid;
+  }
+
+  .qed-attestation-foot .qed-button {
+    display: none;
+  }
+}

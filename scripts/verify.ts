@@ -10,7 +10,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import { extname, join, relative, sep } from "node:path";
 
@@ -285,6 +285,24 @@ function lineOf(text: string, index: number): number {
   return text.slice(0, index).split("\n").length;
 }
 
+/**
+ * A media query cannot read a custom property, so breakpoints are the one
+ * place a px literal has to appear in a stylesheet. They are still declared -
+ * in packages/tokens/src/component-tokens.json as `bp-*` - and this gate
+ * asserts every breakpoint in the CSS is one of the declared values.
+ */
+const declaredBreakpoints = new Set(
+  (
+    JSON.parse(
+      readFileSync(join(root, "packages/tokens/src/component-tokens.json"), "utf8"),
+    ) as { tokens: { name: string; value: string }[] }
+  ).tokens
+    .filter((t) => t.name.startsWith("bp-"))
+    .map((t) => t.value),
+);
+
+const MEDIA_PRELUDE = /@media[^{]*\{/g;
+
 const g2: Gate = {
   id: "G2",
   title: "Token purity - no raw colour/size literals, no forbidden effects",
@@ -301,7 +319,23 @@ const g2: Gate = {
         const r = rel(file);
         if (PURITY_EXEMPT.some((re) => re.test(r))) continue;
         scanned++;
-        const text = readFileSync(file, "utf8");
+        const original = readFileSync(file, "utf8");
+
+        // Check breakpoints against the declared set, then blank the preludes
+        // so the length scan does not see them twice.
+        const text = original.replace(
+          MEDIA_PRELUDE,
+          (prelude: string, offset: number) => {
+            for (const px of prelude.matchAll(/\d+(?:\.\d+)?px/g)) {
+              if (!declaredBreakpoints.has(px[0])) {
+                failures.push(
+                  `${r}:${lineOf(original, offset + px.index)} breakpoint ${px[0]} is not a declared bp-* token`,
+                );
+              }
+            }
+            return " ".repeat(prelude.length);
+          },
+        );
 
         for (const m of text.matchAll(HEX_RE)) {
           failures.push(`${r}:${lineOf(text, m.index)} hard-coded colour ${m[0]}`);
@@ -324,6 +358,9 @@ const g2: Gate = {
 
     notes.push(`${scanned} source files scanned in ${PURITY_ROOTS.join(", ")}`);
     notes.push(`${PURITY_EXEMPT.length} exemptions, each reasoned in this file`);
+    notes.push(
+      `breakpoints allowed only from bp-* tokens: ${[...declaredBreakpoints].join(", ")}`,
+    );
     return failures.length === 0 ? pass(notes) : fail(failures, notes);
   },
 };

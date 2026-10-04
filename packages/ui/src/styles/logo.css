@@ -1,0 +1,8 @@
+/* The logo scales by height; the viewBox gives it its width. Nothing moves. */
+
+.qed-logo {
+  height: var(--qed-logo-size);
+  width: auto;
+  display: block;
+  flex: none;
+}

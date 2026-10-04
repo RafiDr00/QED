@@ -8,10 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./ui.css": "./src/styles/ui.css",
-    "./assets/*": "./src/assets/*"
-  },
-  "scripts": {
-    "build": "tsc -p tsconfig.build.json"
+    "./assets/*": "./src/assets/*",
+    "./model": "./src/model/index.ts"
   },
   "dependencies": {
     "@qed/tokens": "workspace:*"

@@ -3,15 +3,19 @@
   "private": true,
   "version": "0.0.0",
   "packageManager": "pnpm@9.15.9",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build:tokens": "pnpm --filter @qed/tokens build",
-    "build": "pnpm --filter @qed/tokens build && pnpm --filter @qed/ui build && pnpm --filter @qed/cli-render build && pnpm --filter @qed/web build && pnpm --filter @qed/console build",
+    "build": "pnpm build:tokens && pnpm exec tsx scripts/generate-logos.ts && pnpm --filter @qed/web build && pnpm --filter @qed/console build",
     "typecheck": "tsc -b tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run",
     "e2e": "playwright test",
-    "verify": "tsx scripts/verify.ts"
+    "verify": "tsx scripts/verify.ts",
+    "build:logos": "tsx scripts/generate-logos.ts",
+    "measure:fonts": "tsx scripts/measure-fonts.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

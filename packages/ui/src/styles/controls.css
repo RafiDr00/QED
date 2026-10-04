@@ -1,0 +1,138 @@
+/* Button, Card, Label, Table, FocusRing. */
+
+.qed-button {
+  font-family: var(--type-heading-family);
+  font-size: var(--type-heading-size);
+  line-height: var(--type-heading-line);
+  font-weight: var(--type-heading-weight);
+  letter-spacing: var(--type-heading-tracking);
+  padding: var(--space-2) var(--space-4);
+  border: var(--border-hair) solid transparent;
+  border-radius: var(--radius-2);
+  cursor: pointer;
+}
+
+.qed-button[data-variant="primary"] {
+  background: var(--proof);
+  border-color: var(--proof);
+  color: var(--bg-raised);
+}
+
+.qed-button[data-variant="primary"]:hover:not(:disabled) {
+  background: var(--proof-press);
+  border-color: var(--proof-press);
+}
+
+/* An inset rim instead of a shadow - the system has no shadows. */
+.qed-button[data-variant="primary"]:active:not(:disabled) {
+  background: var(--proof-press);
+  border-color: var(--bg);
+}
+
+.qed-button[data-variant="secondary"] {
+  background: var(--bg-raised);
+  border-color: var(--rule);
+  color: var(--ink);
+}
+
+.qed-button[data-variant="secondary"]:hover:not(:disabled) {
+  border-color: var(--rule-strong);
+}
+
+.qed-button[data-variant="secondary"]:active:not(:disabled) {
+  background: var(--bg-sunk);
+}
+
+.qed-button[data-variant="quiet"] {
+  background: none;
+  border-color: transparent;
+  color: var(--ink);
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
+}
+
+.qed-button[data-variant="quiet"]:hover:not(:disabled) {
+  color: var(--proof);
+}
+
+.qed-button:disabled {
+  background: var(--bg-raised);
+  border-color: var(--rule);
+  color: var(--ink-faint);
+  cursor: default;
+}
+
+.qed-card {
+  background: var(--bg-raised);
+  border: var(--border-hair) solid var(--rule);
+  border-radius: var(--radius-2);
+  padding: var(--space-4);
+}
+
+.qed-label {
+  color: var(--ink-muted);
+}
+
+.qed-label[data-tone="ink"] {
+  color: var(--ink);
+}
+
+.qed-label[data-tone="proof"] {
+  color: var(--proof);
+}
+
+.qed-focus-ring:focus-within {
+  outline: var(--border-rule) solid var(--focus);
+  outline-offset: var(--border-rule);
+}
+
+.qed-table {
+  border-collapse: collapse;
+  width: 100%;
+  text-align: left;
+}
+
+.qed-table-caption {
+  font-family: var(--type-heading-family);
+  font-size: var(--type-heading-size);
+  line-height: var(--type-heading-line);
+  font-weight: var(--type-heading-weight);
+  color: var(--ink);
+  text-align: left;
+  padding-bottom: var(--space-2);
+}
+
+.qed-table th[scope="col"] {
+  color: var(--ink-muted);
+  padding: 0 var(--space-4) var(--space-2) 0;
+  border-bottom: var(--border-hair) solid var(--rule-strong);
+  vertical-align: bottom;
+  font-weight: var(--type-label-weight);
+}
+
+.qed-table td,
+.qed-table th[scope="row"] {
+  padding: var(--space-3) var(--space-4) var(--space-3) 0;
+  border-bottom: var(--border-hair) solid var(--rule);
+  vertical-align: top;
+  font-weight: var(--type-body-weight);
+}
+
+.qed-table td:last-child,
+.qed-table th:last-child {
+  padding-right: 0;
+}
+
+.qed-table [data-align="end"] {
+  text-align: right;
+}
+
+.qed-table-empty {
+  color: var(--ink-muted);
+  padding-top: var(--space-6);
+  padding-bottom: var(--space-6);
+}
+
+.qed-table-scroll {
+  overflow-x: auto;
+}

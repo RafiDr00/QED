@@ -57,9 +57,26 @@ interface Tokens {
   border: { tokens: ScaleToken[] };
 }
 
+interface ComponentToken {
+  name: string;
+  value: string;
+  source: string;
+  offGrid?: string;
+}
+
 const tokens = JSON.parse(
   readFileSync(join(here, "src", "tokens.json"), "utf8"),
 ) as Tokens;
+
+/**
+ * Sizes the design system states in a component README but does not carry in
+ * tokens.json. Emitted as `--c-*` so a component never hand-writes a size.
+ */
+const componentTokens = (
+  JSON.parse(
+    readFileSync(join(here, "src", "component-tokens.json"), "utf8"),
+  ) as { tokens: ComponentToken[] }
+).tokens;
 
 const themeIds = tokens.color.themes.map((t) => t.id);
 const primaryTheme = themeIds[0];
@@ -98,6 +115,7 @@ const staticDecls: string[] = [
   ...tokens.spacing.tokens.map((t) => decl(t.name, t.value)),
   ...tokens.radius.tokens.map((t) => decl(t.name, t.value)),
   ...tokens.border.tokens.map((t) => decl(t.name, t.value)),
+  ...componentTokens.map((t) => decl(`c-${t.name}`, t.value)),
 ];
 
 const typeDecls: string[] = [];
@@ -216,8 +234,22 @@ export const typeClass = {
 ${typeStyleEntries.join(",\n")}
 };
 
+/** Sizes stated in a component README; each cites its source in the index. */
+export const componentToken = {
+${componentTokens.map((t) => `  ${JSON.stringify(camel(t.name))}: "var(--c-${t.name})"`).join(",\n")}
+};
+
 /** Resolved hex per colour token per theme - for tooling and contrast gates. */
 export const rawColor = ${rawColor};
+
+/** Raw component-token values, with the sentence each one comes from. */
+export const componentTokenSource = ${JSON.stringify(
+    Object.fromEntries(
+      componentTokens.map((t) => [t.name, { value: t.value, source: t.source }]),
+    ),
+    null,
+    2,
+  )};
 `;
 
 const unionOf = (keys: string[]) =>
@@ -232,6 +264,7 @@ export type BorderTokenName = ${unionOf(tokens.border.tokens.map((t) => camel(t.
 export type TypeStyleName = ${unionOf(
   tokens.type.groups.flatMap((g) => g.styles.map((s) => camel(s.name))),
 )};
+export type ComponentTokenName = ${unionOf(componentTokens.map((t) => camel(t.name)))};
 
 export declare const themes: readonly ThemeId[];
 export declare const primaryTheme: ThemeId;
@@ -240,8 +273,12 @@ export declare const space: Readonly<Record<SpaceTokenName, string>>;
 export declare const radius: Readonly<Record<RadiusTokenName, string>>;
 export declare const border: Readonly<Record<BorderTokenName, string>>;
 export declare const typeClass: Readonly<Record<TypeStyleName, string>>;
+export declare const componentToken: Readonly<Record<ComponentTokenName, string>>;
 export declare const rawColor: Readonly<
   Record<string, Readonly<Record<ThemeId, string>>>
+>;
+export declare const componentTokenSource: Readonly<
+  Record<string, { readonly value: string; readonly source: string }>
 >;
 `;
 

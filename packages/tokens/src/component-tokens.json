@@ -1,0 +1,71 @@
+{
+  "comment": "Values the design system states in a component README but does not carry in tokens.json. Each one cites the sentence it comes from. They live here so no component ever hand-writes a size - verify.ts G2 depends on that.",
+  "tokens": [
+    {
+      "name": "dot-size",
+      "value": "9px",
+      "source": "components/Verdict/README.md - 'Glyph 9px at radius-round - the only round shape in the system.'",
+      "offGrid": "The one off-grid value in the system. It is a glyph diameter, not spacing, and 8px reads as a bullet while 12px reads as a button."
+    },
+    {
+      "name": "dot-ring",
+      "value": "2px",
+      "source": "components/Verdict/preview.html - the hollow ABSTAINED dot is an inset ring; matches border-rule."
+    },
+    {
+      "name": "field-column",
+      "value": "132px",
+      "source": "components/Attestation/README.md - 'label keys against mono values at a 132px column'."
+    },
+    {
+      "name": "logo-xs",
+      "value": "16px",
+      "source": "components/Attestation/README.md - 'the mark at 16px in proof'."
+    },
+    {
+      "name": "logo-sm",
+      "value": "24px",
+      "source": "components/Logotype/README.md - the small variant covers '24px and below'."
+    },
+    {
+      "name": "logo-md",
+      "value": "32px",
+      "source": "components/Logotype/README.md - 'qed-mark.svg | 5.5% | 46% | 32px and up'."
+    },
+    {
+      "name": "logo-lg",
+      "value": "48px",
+      "source": "Derived: the next step on the 4px grid used for page headers."
+    },
+    {
+      "name": "logo-xl",
+      "value": "96px",
+      "source": "Derived: the hero lockup, matching display-xl's 96px font-size."
+    },
+    {
+      "name": "pane-max",
+      "value": "688px",
+      "source": "components/Terminal/preview.html - 'max-width:690px', moved onto the 4px grid."
+    },
+    {
+      "name": "card-max",
+      "value": "640px",
+      "source": "components/Attestation/preview.html - 'max-width:640px'."
+    },
+    {
+      "name": "page-max",
+      "value": "1120px",
+      "source": "Derived: page gutter space-12 either side of a 1024px measure."
+    },
+    {
+      "name": "bp-stack",
+      "value": "560px",
+      "source": "Derived: the width at which the attestation's 132px label column stops fitting beside its value."
+    },
+    {
+      "name": "bp-page",
+      "value": "720px",
+      "source": "Derived: the width at which the space-12 page gutter costs more than it gives."
+    }
+  ]
+}

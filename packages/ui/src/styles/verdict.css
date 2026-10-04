@@ -1,0 +1,81 @@
+/*
+ * Three states, equal weight. The shape carries the state; the colour agrees
+ * with it. Filled, cross-filled, hollow - all three knocked out of one path,
+ * so a greyscale print keeps them apart.
+ */
+
+.qed-dot {
+  width: var(--c-dot-size);
+  height: var(--c-dot-size);
+  flex: none;
+}
+
+.qed-dot[data-state="EQUIVALENT"] {
+  fill: var(--proof);
+}
+
+.qed-dot[data-state="DIVERGED"] {
+  fill: var(--break);
+}
+
+.qed-dot[data-state="ABSTAINED"] {
+  fill: var(--open);
+}
+
+.qed-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2);
+  border: var(--border-hair) solid var(--rule);
+  border-radius: var(--radius-1);
+  background: var(--bg-raised);
+}
+
+.qed-chip[data-bare="true"] {
+  border-color: transparent;
+  background: none;
+  padding: 0;
+}
+
+.qed-chip-word {
+  white-space: nowrap;
+}
+
+.qed-chip[data-state="EQUIVALENT"] .qed-chip-word {
+  color: var(--proof);
+}
+
+.qed-chip[data-state="DIVERGED"] .qed-chip-word {
+  color: var(--break);
+}
+
+.qed-chip[data-state="ABSTAINED"] .qed-chip-word {
+  color: var(--open);
+}
+
+.qed-chip-evidence {
+  color: var(--ink-muted);
+}
+
+.qed-numeral {
+  color: var(--ink);
+}
+
+.qed-evidence-note {
+  color: var(--ink-muted);
+}
+
+.qed-fn {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+}
+
+.qed-fn-symbol {
+  font-weight: var(--type-heading-weight);
+}
+
+.qed-code {
+  font-family: var(--font-data);
+  overflow-wrap: anywhere;
+}
