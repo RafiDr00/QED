@@ -150,15 +150,51 @@ describe("Attestation", () => {
     );
   });
 
-  it("disables the button while a check is running", () => {
-    render(
+  it("marks the button busy while a check runs, without taking focus away", async () => {
+    const user = userEvent.setup();
+    const onVerify = vi.fn();
+    const { rerender } = render(
+      <Attestation record={RECORD} onVerify={onVerify} />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /verify independently/i }),
+    );
+    rerender(
       <Attestation
         record={RECORD}
-        onVerify={() => undefined}
+        onVerify={onVerify}
         verification={{ status: "checking" }}
       />,
     );
-    expect(screen.getByRole("button", { name: /verifying/i })).toBeDisabled();
+
+    const busy = screen.getByRole("button", { name: /verifying/i });
+    expect(busy).toHaveAttribute("aria-busy", "true");
+    // Disabling it here would drop focus to <body> mid-interaction.
+    expect(busy).not.toBeDisabled();
+    expect(busy).toHaveFocus();
+
+    await user.click(busy);
+    expect(onVerify).toHaveBeenCalledTimes(1);
+  });
+
+  it("says plainly when a record did not re-derive", () => {
+    render(
+      <Attestation
+        record={RECORD}
+        verification={{
+          status: "mismatch",
+          detail: "Re-derivation produced a different digest.",
+        }}
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Re-derivation produced a different digest.",
+    );
+    expect(screen.getByRole("article")).toHaveAttribute(
+      "data-verification",
+      "mismatch",
+    );
   });
 });
 
@@ -250,12 +286,12 @@ describe("ThemeToggle", () => {
     render(<ThemeToggle />);
 
     const button = screen.getByRole("button", {
-      name: "Theme: Void. Switch to Paper.",
+      name: "Switch to Paper theme (currently Void)",
     });
     await user.click(button);
     expect(document.documentElement.getAttribute("data-theme")).toBe("paper");
     expect(
-      screen.getByRole("button", { name: "Theme: Paper. Switch to Void." }),
+      screen.getByRole("button", { name: "Switch to Void theme (currently Paper)" }),
     ).toBeInTheDocument();
   });
 });

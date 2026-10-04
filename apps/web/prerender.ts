@@ -23,7 +23,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const dist = join(here, "dist");
 
 /** Attaches the header toggle. Separate from the bootstrap, which runs in <head>. */
-const TOGGLE_SCRIPT = `(function(){var b=document.getElementById("qed-theme-toggle");if(!b)return;var L={void:"Void",paper:"Paper"};function s(){var t=document.documentElement.getAttribute("data-theme")==="paper"?"paper":"void";var n=t==="void"?"paper":"void";b.textContent=L[n];b.setAttribute("aria-label","Theme: "+L[t]+". Switch to "+L[n]+".")}b.addEventListener("click",function(){var t=document.documentElement.getAttribute("data-theme")==="paper"?"paper":"void";var n=t==="void"?"paper":"void";document.documentElement.setAttribute("data-theme",n);try{localStorage.setItem("qed-theme",n)}catch(e){}s()});s()})();`;
+const TOGGLE_SCRIPT = `(function(){var b=document.getElementById("qed-theme-toggle");if(!b)return;var L={void:"Void",paper:"Paper"};function s(){var t=document.documentElement.getAttribute("data-theme")==="paper"?"paper":"void";var n=t==="void"?"paper":"void";b.textContent=L[n];b.setAttribute("aria-label","Switch to "+L[n]+" theme (currently "+L[t]+")")}b.addEventListener("click",function(){var t=document.documentElement.getAttribute("data-theme")==="paper"?"paper":"void";var n=t==="void"?"paper":"void";document.documentElement.setAttribute("data-theme",n);try{localStorage.setItem("qed-theme",n)}catch(e){}s()});s()})();`;
 
 interface Page {
   readonly out: string;

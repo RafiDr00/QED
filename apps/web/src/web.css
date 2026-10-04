@@ -89,7 +89,7 @@ a.qed-button[data-variant="primary"] {
 
 .web-step {
   display: grid;
-  grid-template-columns: var(--c-field-column) 1fr;
+  grid-template-columns: var(--c-step-column) 1fr;
   gap: var(--space-6);
   align-items: start;
 }

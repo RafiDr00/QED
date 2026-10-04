@@ -24,6 +24,7 @@ for (const theme of THEMES) {
     for (const shot of shots) {
       const name = await shot.getAttribute("data-shot");
       if (name === null) continue;
+      if (name === "FocusRing") await shot.locator("a").first().focus();
       await expect(shot).toHaveScreenshot(`${name}.${theme}.png`);
     }
   });

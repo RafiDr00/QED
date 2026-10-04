@@ -6,7 +6,7 @@
 
 .qed-attestation {
   background: var(--proof-dim);
-  border: var(--border-hair) solid var(--rule);
+  border: var(--border-hair) solid var(--rule-strong);
   border-left: var(--border-rule) solid var(--proof);
   border-radius: var(--radius-2);
   padding: var(--space-6);
@@ -70,7 +70,7 @@
 }
 
 .qed-attestation-foot {
-  border-top: var(--border-hair) solid var(--rule);
+  border-top: var(--border-hair) solid var(--rule-strong);
   padding-top: var(--space-4);
   display: flex;
   justify-content: space-between;
@@ -85,6 +85,27 @@
 
 .qed-verify-status {
   margin-top: var(--space-3);
+}
+
+/*
+ * A record that did not re-derive must not look like a signed one. The seal
+ * comes off: the ground drops to `bg-raised`, the left rule turns `break`, and
+ * the reason is stated in `break` rather than buried in body copy.
+ */
+.qed-attestation[data-verification="mismatch"],
+.qed-attestation[data-verification="error"] {
+  background: var(--bg-raised);
+  border-left-color: var(--break);
+}
+
+.qed-attestation[data-verification="mismatch"] .qed-verify-status,
+.qed-attestation[data-verification="error"] .qed-verify-status {
+  color: var(--break);
+  font-weight: var(--type-heading-weight);
+}
+
+.qed-attestation[data-verification="verified"] .qed-verify-status {
+  color: var(--ink);
 }
 
 /*

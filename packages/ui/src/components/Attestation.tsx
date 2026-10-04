@@ -81,7 +81,11 @@ export function Attestation({
   const checking = verification.status === "checking";
 
   return (
-    <article className="qed-attestation" aria-labelledby={titleId}>
+    <article
+      className="qed-attestation"
+      data-verification={verification.status}
+      aria-labelledby={titleId}
+    >
       <p className="qed-attestation-eyebrow">
         <Logo variant="mark" size="xs" decorative />
         <Label tone="ink">SIGNED ATTESTATION</Label>
@@ -128,8 +132,8 @@ export function Attestation({
         {onVerify ? (
           <Button
             variant="primary"
-            onClick={onVerify}
-            disabled={checking}
+            onClick={checking ? undefined : onVerify}
+            aria-busy={checking}
             aria-describedby={`${titleId}-status`}
           >
             {checking ? "Verifying…" : "Verify independently"}

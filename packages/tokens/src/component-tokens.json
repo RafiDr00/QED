@@ -44,8 +44,8 @@
     },
     {
       "name": "pane-max",
-      "value": "760px",
-      "source": "components/Terminal/preview.html - 'max-width:690px'. Widened to the next 4px step that fits a real run: at 690px a one-clause abstain reason is cut off, and the README's alignment rule ('a verdict list that wraps is a verdict list nobody reads') matters more than the preview's width."
+      "value": "776px",
+      "source": "Sized to the terminal's own convention: 80 columns of Martian Mono at 13px measure 728px, plus space-6 of padding either side. components/Terminal/preview.html uses 690px, which fits its own sample run but cuts a realistic abstain clause, and the README is explicit that a verdict list must not wrap."
     },
     {
       "name": "card-max",
@@ -66,6 +66,11 @@
       "name": "bp-page",
       "value": "720px",
       "source": "Derived: the width at which the space-12 page gutter costs more than it gives."
+    },
+    {
+      "name": "step-column",
+      "value": "48px",
+      "source": "Derived: the width of a two-digit step number at `mono-sm`, on the 4px grid. Separate from field-column, which is the attestation's 132px label column."
     }
   ]
 }

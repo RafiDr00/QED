@@ -177,9 +177,14 @@ ${themeBlock(theme)}
   )
   .join("\n\n")}
 
-/* Paper exists for print, PDFs and the audit bundle (brand book, section 2). */
+/*
+ * Paper exists for print, PDFs and the audit bundle (brand book, section 2).
+ * Anything that is not explicitly Paper already prints as Paper - including a
+ * document whose reader has used the theme toggle, which writes [data-theme]
+ * and would otherwise opt the printed page back into Void.
+ */
 @media print {
-  :root:not([data-theme]) {
+  :root:not([data-theme="paper"]) {
     color-scheme: light;
 ${themeBlock(themeIds[1] ?? primaryTheme)}
   }

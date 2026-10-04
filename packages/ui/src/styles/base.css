@@ -68,8 +68,12 @@ a {
   text-underline-offset: var(--space-1);
 }
 
+/*
+ * `proof-press` is declared "Never used as a text colour", so hover thickens
+ * the rule under the word instead of changing its hue.
+ */
 a:hover {
-  color: var(--proof-press);
+  text-decoration-thickness: var(--border-rule);
 }
 
 code,
@@ -96,7 +100,11 @@ samp {
   border: 0;
 }
 
-/* The mark means a finished proof; nothing about it ever moves. */
+/*
+ * Nothing in the system animates by design - the mark means a finished proof,
+ * and spinning it would say the opposite. This is a backstop for anything a
+ * future surface adds.
+ */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

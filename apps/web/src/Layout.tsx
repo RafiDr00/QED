@@ -54,7 +54,7 @@ export function Layout({ children, current = "home" }: LayoutProps) {
               data-variant="quiet"
               type="button"
               id="qed-theme-toggle"
-              aria-label="Theme: Void. Switch to Paper."
+              aria-label="Switch to Paper theme (currently Void)"
             >
               Paper
             </button>
@@ -73,8 +73,8 @@ export function Layout({ children, current = "home" }: LayoutProps) {
             QED &middot; deterministic verification &middot; qed.dev
           </p>
           <p className="t-mono-sm web-footer-note">
-            Every claim on this page carries its number. The abstain rate is on
-            the home page, not in a footnote.
+            Abstain rate 29% &middot; 7 verifiable of 41 changed &middot; median
+            run 2m 14s
           </p>
         </div>
       </footer>

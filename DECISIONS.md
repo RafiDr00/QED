@@ -261,3 +261,58 @@ The brand book notes that `qed.dev` and the three-letter handles need checking,
 and that QED Investors exists in a different trademark class. Nothing in this
 repo depends on the word: the tombstone, the one green and the single typeface
 are the brand, and a rename would touch copy and the `logoArt` keys only.
+
+---
+
+## Added in round 2, after review
+
+### D-024 · The lockup is composed, not shipped from the file
+
+`qed-logotype.svg` bakes in the smoothed mark, and the mark inside a lockup is
+0.42× the lockup's height — so shipping that file draws the smoothed geometry at
+10px in a 24px header, which the Logotype README's "Never" list forbids. The
+lockup is composed from the wordmark plus whichever mark the drawn size calls
+for, placed by the README's own rule: 0.78× the x-height, gap 30 units,
+bottom-aligned to the baseline. At `xl` the result is the shipped file's own
+geometry; below that it is the small mark, which is the point.
+
+### D-025 · `size` means the mark, not the box around it
+
+Both mark files are drawn inside a 24-unit box with the shape inset by 2 units.
+Rendering the file at a given height therefore drew a mark 5/6 of that size, and
+"use the small file at 24px and below" became ambiguous about which 24px. The
+mark variant's viewBox is tightened to the shape's own bounds, so `size` is the
+mark. Clear space is the layout's job, which is what the system means by it.
+
+### D-026 · The terminal is 80 columns, and the pane is sized to that
+
+Column widths were capped at numbers picked by eye, which still pushed the
+evidence column off the pane for a long symbol. They are now derived: a terminal
+is 80 columns unless told otherwise, so `buildRunLines` takes `columns` (default
+80), shrinks the symbol column first and then the path column to fit, and gives
+any row that outgrows its column its own evidence line. `--c-pane-max` is the
+measured width of 80 columns of Martian Mono at 13px (728px) plus padding.
+
+A row with both a 33-character path and a 37-character symbol still runs past 80
+columns. Truncating either would hide which function the verdict is about, so
+the row keeps its names and the pane scrolls — as a terminal does.
+
+### D-027 · A record that did not re-derive loses its seal
+
+`proof-dim` and the 2px `proof` rule are the system's mark of a signed record.
+A failed verification keeps neither: the ground drops to `bg-raised` and the
+left rule turns `break`. The README does not describe this state; leaving it
+looking signed would have been the one reading the component must never allow.
+
+### D-028 · Verification reports when it ran, not when the record was signed
+
+The console's Verify action reports the time the check ran. An earlier version
+reused the record's own timestamp so screenshots would be deterministic, which
+made the product state something false to keep a test simple.
+
+### D-029 · `em` and `ch` are allowed outside the token package
+
+G2 rejects `px`, `rem` and `pt`. `em` and `ch` are relative to the type that is
+already set from a token, so they carry no independent design value — a measure
+of `66ch` is "however wide 66 characters of this font are", not a size someone
+chose. They stay allowed, and this is the reason.

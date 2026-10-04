@@ -117,21 +117,44 @@ describe("buildRunLines", () => {
     expect(runLinesToText(buildRunLines(run([equivalent])))).toContain("∎");
   });
 
-  it("aligns the three fixed columns regardless of symbol length", () => {
+  it("aligns the columns across rows that fit", () => {
     const result: RunResult = {
       ...run([equivalent, equivalent]),
       runs: [
         { path: "a/b.go", symbol: "short", verdict: equivalent },
-        {
-          path: "ledger/reconciliation/periodic.ts",
-          symbol: "reconcileOutstandingSettlementBatches",
-          verdict: equivalent,
-        },
+        { path: "billing/tax.go", symbol: "computeVat", verdict: equivalent },
       ],
     };
     const lines = runLinesToText(buildRunLines(result)).split("\n");
-    const verdictLines = lines.filter((l) => l.includes("EQUIVALENT"));
-    const offsets = verdictLines.map((l) => l.indexOf("18,402"));
+    const offsets = lines
+      .filter((l) => l.includes("EQUIVALENT"))
+      .map((l) => l.indexOf("18,402"));
     expect(new Set(offsets).size).toBe(1);
+  });
+
+  it("gives an over-long symbol its own evidence line rather than shifting every column", () => {
+    const long = {
+      path: "ledger/reconciliation/periodic.ts",
+      symbol: "reconcileOutstandingSettlementBatches",
+      verdict: equivalent,
+    };
+    const short = { path: "a/b.go", symbol: "short", verdict: equivalent };
+    const lines = runLinesToText(
+      buildRunLines({ ...run([equivalent, equivalent]), runs: [short, long] }),
+    ).split("\n");
+
+    const shortLine = lines.find((l) => l.includes("short"));
+    const longLine = lines.find((l) => l.includes("reconcileOutstanding"));
+    const evidenceLines = lines.filter((l) => l.includes("18,402"));
+
+    expect(longLine).toContain("reconcileOutstandingSettlementBatches");
+    expect(longLine).not.toContain("18,402");
+    expect(evidenceLines).toHaveLength(2);
+
+    const inlineOffset = shortLine?.indexOf("18,402");
+    const wrappedOffset = evidenceLines
+      .find((l) => !l.includes("short"))
+      ?.indexOf("18,402");
+    expect(wrappedOffset).toBe(inlineOffset);
   });
 });

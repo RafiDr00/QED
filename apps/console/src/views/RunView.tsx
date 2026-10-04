@@ -51,8 +51,9 @@ export function RunView() {
           </h2>
         </div>
         <p className="t-body-sm qed-prose con-note">
-          Three functions changed and none could be run soundly. The output
-          still prints all three counts, including the zeros.
+          {EMPTY_RUN.changedFunctions} functions changed and none could be run
+          soundly. The output still prints all three counts, including the
+          zeros, and exits 0 - abstaining is not a failure.
         </p>
         <TerminalOutput result={EMPTY_RUN} banner={false} label="empty run output" />
       </section>

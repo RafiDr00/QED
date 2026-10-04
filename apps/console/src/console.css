@@ -56,7 +56,7 @@
   border-radius: var(--radius-1);
   color: var(--ink-muted);
   text-decoration: none;
-  border-left: var(--border-rule) solid transparent;
+  border-left: var(--border-hair) solid transparent;
 }
 
 .con-nav-link:hover {
@@ -72,10 +72,6 @@
 .con-main {
   padding: var(--space-8) var(--space-12) var(--space-16);
   min-width: 0;
-}
-
-.con-main:focus {
-  outline: none;
 }
 
 .con-title {

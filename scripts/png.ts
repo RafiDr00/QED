@@ -142,15 +142,49 @@ export function lumaStats(bitmap: Bitmap): LumaStats {
   };
 }
 
-/** Fraction of pixels whose luma differs by more than `tolerance`. */
-export function differenceRatio(a: Bitmap, b: Bitmap, tolerance = 4): number {
-  if (a.width !== b.width || a.height !== b.height) return 1;
-  const n = a.width * a.height;
-  let differing = 0;
-  for (let i = 0; i < n; i++) {
-    if (Math.abs(luma(a, i) - luma(b, i)) > tolerance) differing++;
+export interface Comparison {
+  /** Fraction of compared pixels whose luma differs by more than `tolerance`. */
+  ratio: number;
+  /**
+   * False when the two bitmaps are not the same size. A caller must decide
+   * what that means rather than reading a ratio: an earlier version of this
+   * function returned 1 for a size mismatch, which quietly turned two of three
+   * glyph comparisons into a constant and made the gate that read them prove
+   * nothing at all.
+   */
+  dimensionsMatch: boolean;
+  /** The region actually compared. */
+  width: number;
+  height: number;
+}
+
+/** Compares the overlapping region, and says whether there was more to compare. */
+export function compareBitmaps(
+  a: Bitmap,
+  b: Bitmap,
+  tolerance = 4,
+): Comparison {
+  const width = Math.min(a.width, b.width);
+  const height = Math.min(a.height, b.height);
+  const dimensionsMatch = a.width === b.width && a.height === b.height;
+  if (width === 0 || height === 0) {
+    return { ratio: 0, dimensionsMatch, width, height };
   }
-  return differing / n;
+
+  let differing = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const left = luma(a, y * a.width + x);
+      const right = luma(b, y * b.width + x);
+      if (Math.abs(left - right) > tolerance) differing++;
+    }
+  }
+  return {
+    ratio: differing / (width * height),
+    dimensionsMatch,
+    width,
+    height,
+  };
 }
 
 export function cropToBitmap(

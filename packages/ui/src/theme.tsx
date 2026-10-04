@@ -84,7 +84,7 @@ export function ThemeToggle({ label = "Theme" }: ThemeToggleProps) {
       data-variant="quiet"
       type="button"
       onClick={onClick}
-      aria-label={`${label}: ${THEME_LABEL[theme]}. Switch to ${THEME_LABEL[next]}.`}
+      aria-label={`Switch to ${THEME_LABEL[next]} ${label.toLowerCase()} (currently ${THEME_LABEL[theme]})`}
     >
       {THEME_LABEL[next]}
     </button>

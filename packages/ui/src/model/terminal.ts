@@ -38,6 +38,17 @@ const INDENT = "  ";
 const EVIDENCE_INDENT = "      ";
 const GAP = "  ";
 
+/**
+ * A terminal is 80 columns wide unless it says otherwise, and that is what
+ * sizes the pane on screen too - so the verdict list, the part the design
+ * system insists must not wrap, fits both.
+ */
+export const DEFAULT_COLUMNS = 80;
+
+/** Columns are shrunk to fit, but never past the point of being readable. */
+const PATH_COLUMN_MIN = 16;
+const SYMBOL_COLUMN_MIN = 16;
+
 const TONE_BY_STATE = {
   EQUIVALENT: "proof",
   DIVERGED: "break",
@@ -71,7 +82,16 @@ export function bannerSegments(): readonly Segment[] {
   ];
 }
 
-export function buildRunLines(result: RunResult): readonly RunLine[] {
+export interface LayoutOptions {
+  /** Terminal width in characters. */
+  readonly columns?: number;
+}
+
+export function buildRunLines(
+  result: RunResult,
+  options: LayoutOptions = {},
+): readonly RunLine[] {
+  const columns = options.columns ?? DEFAULT_COLUMNS;
   const lines: RunLine[] = [];
   const push = (...segments: Segment[]) => lines.push({ segments });
 
@@ -86,15 +106,47 @@ export function buildRunLines(result: RunResult): readonly RunLine[] {
   push();
 
   // Three fixed columns, measured from the run itself; evidence ragged right.
+  //
+  // The columns are capped. Without a cap one 37-character symbol pushes the
+  // evidence column past the pane for every other row, and "a verdict list
+  // that wraps is a verdict list nobody reads" cuts both ways: the fix is not
+  // to let one outlier set the layout. A row that outgrows its column keeps
+  // its full name and puts its evidence on the next line, indented to the
+  // column it would have started in - so the alignment holds for the rest.
   const wordWidth =
     Math.max(0, ...result.runs.map((r) => r.verdict.state.length)) + 2;
-  const pathWidth = Math.max(0, ...result.runs.map((r) => r.path.length)) + 2;
-  const symbolWidth = Math.max(0, ...result.runs.map((r) => r.symbol.length)) + 2;
+  const fixed = INDENT.length + 1 + (wordWidth + 1);
+  const widestEvidence = Math.max(
+    0,
+    ...result.runs.map((r) => evidenceFor(r.verdict).length),
+  );
+
+  let pathWidth = Math.max(0, ...result.runs.map((r) => r.path.length)) + 2;
+  let symbolWidth = Math.max(0, ...result.runs.map((r) => r.symbol.length)) + 2;
+
+  // Shrink to fit the terminal, taking it out of the symbol column first:
+  // a path locates the change, and a reader scanning a run needs that most.
+  let excess = fixed + pathWidth + symbolWidth + widestEvidence - columns;
+  if (excess > 0) {
+    const fromSymbol = Math.min(
+      excess,
+      Math.max(0, symbolWidth - SYMBOL_COLUMN_MIN),
+    );
+    symbolWidth -= fromSymbol;
+    excess -= fromSymbol;
+    const fromPath = Math.min(excess, Math.max(0, pathWidth - PATH_COLUMN_MIN));
+    pathWidth -= fromPath;
+  }
+
+  const evidenceColumn = fixed + pathWidth + symbolWidth;
 
   for (const run of result.runs) {
     const tone = TONE_BY_STATE[run.verdict.state];
     const glyph = TERMINAL_GLYPH[run.verdict.state];
     const evidence = evidenceFor(run.verdict);
+    const overflows =
+      run.path.length + 2 > pathWidth || run.symbol.length + 2 > symbolWidth;
+
     const segments: Segment[] = [
       { text: INDENT, tone: "ink" },
       { text: glyph, tone, bold: true, glyph: true },
@@ -105,12 +157,21 @@ export function buildRunLines(result: RunResult): readonly RunLine[] {
       },
       { text: pad(run.path, pathWidth), tone: "ink" },
       {
-        text: evidence === "" ? run.symbol : pad(run.symbol, symbolWidth),
+        text:
+          evidence === "" || overflows
+            ? run.symbol
+            : pad(run.symbol, symbolWidth),
         tone: "ink",
       },
     ];
-    if (evidence !== "") segments.push({ text: evidence, tone: "muted" });
+    if (evidence !== "" && !overflows) {
+      segments.push({ text: evidence, tone: "muted" });
+    }
     lines.push({ segments });
+
+    if (evidence !== "" && overflows) {
+      push({ text: `${" ".repeat(evidenceColumn)}${evidence}`, tone: "muted" });
+    }
 
     if (run.verdict.state === "DIVERGED") {
       const { input, base, head, repro } = run.verdict.counterexample;

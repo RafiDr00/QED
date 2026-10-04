@@ -1,6 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { rawColor } from "@qed/tokens";
+import { summarise } from "@qed/ui/model";
+
+import { HERO_RUN } from "../../apps/web/src/content.ts";
 import { contrastHex, parseColor } from "../../scripts/color.ts";
 
 /** The flows that matter: finding the docs, reading a verdict, filing a record. */
@@ -129,9 +132,17 @@ test("a reader can get from the marketing page to the install command", async ({
     "Proven, or it says so.",
   );
 
-  // The abstain rate is on the home page, not in a footnote.
+  // The abstain rate is on the home page, not in a footnote - and it is the
+  // rate of the run printed above it, not a number from somewhere else.
   await expect(page.getByText("ABSTAIN RATE", { exact: true })).toBeVisible();
-  await expect(page.getByText("31%")).toBeVisible();
+  const summary = summarise(HERO_RUN);
+  const rate = Math.round(
+    (summary.abstained / HERO_RUN.verifiableFunctions) * 100,
+  );
+  await expect(page.getByText(`${rate}%`).first()).toBeVisible();
+  await expect(
+    page.getByText(String(HERO_RUN.verifiableFunctions), { exact: true }).first(),
+  ).toBeVisible();
 
   await page.getByRole("link", { name: "Install" }).first().click();
   await expect(page).toHaveURL(/\/docs\/#install$/);

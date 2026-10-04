@@ -7,14 +7,20 @@ import { RELEASES, type Release } from "../fixtures.js";
  * The abstain rate sits beside the coverage figure, never without it.
  */
 
+/*
+ * With nothing verifiable there is no rate to report. Printing "0%" would read
+ * as "nothing abstained", which is the opposite of what happened.
+ */
+const NONE = "—";
+
 const rate = (release: Release) =>
   release.verifiable === 0
-    ? "0%"
+    ? NONE
     : `${Math.round((release.abstained / release.verifiable) * 100)}%`;
 
 const coverage = (release: Release) =>
   release.changed === 0
-    ? "0%"
+    ? NONE
     : `${Math.round((release.verifiable / release.changed) * 100)}%`;
 
 export function ReleaseView() {

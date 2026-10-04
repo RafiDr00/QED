@@ -90,6 +90,12 @@
   border-collapse: collapse;
   width: 100%;
   text-align: left;
+  /*
+   * Below this the columns squeeze and paths break mid-token. The scroll
+   * container around it is what should give, which it cannot do unless the
+   * table refuses to shrink.
+   */
+  min-width: 52ch;
 }
 
 .qed-table-caption {

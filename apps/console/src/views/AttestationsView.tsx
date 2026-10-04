@@ -4,7 +4,7 @@ import { ATTESTATION, ATTESTATION_STRICT } from "../fixtures.js";
 
 export interface AttestationsViewProps {
   verification: Record<string, VerificationState>;
-  onVerify: (digest: string, checkedAt: string) => void;
+  onVerify: (digest: string) => void;
 }
 
 /**
@@ -25,7 +25,7 @@ export function AttestationsView({
           record={record}
           verification={verification[record.digest] ?? { status: "idle" }}
           onVerify={() => {
-            onVerify(record.digest, record.timestamp);
+            onVerify(record.digest);
           }}
         />
       ))}

@@ -6,7 +6,7 @@ import { rawColor } from "@qed/tokens";
 import { expect, test, type Page } from "@playwright/test";
 
 import { contrast, parseColor, requiredRatio, round2 } from "../../scripts/color.ts";
-import { cropToBitmap, decodePng, differenceRatio } from "../../scripts/png.ts";
+import { compareBitmaps, cropToBitmap, decodePng } from "../../scripts/png.ts";
 import { sweepContrast } from "./sweep.ts";
 
 /**
@@ -43,6 +43,47 @@ async function open(page: Page, url: string, theme: Theme): Promise<void> {
   }, theme);
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(80);
+}
+
+/**
+ * Crops every bitmap to the largest box they all share, then compares each
+ * pair. Cropping each one to its own square independently left them different
+ * sizes, which the comparison could not do anything useful with.
+ */
+function comparePairwise(
+  bitmaps: Map<string, ReturnType<typeof decodePng>>,
+  tolerance: number,
+): { a: string; b: string; ratio: number; dimensionsMatch: boolean }[] {
+  const all = [...bitmaps.values()];
+  const width = Math.min(...all.map((b) => b.width));
+  const height = Math.min(...all.map((b) => b.height));
+  const cropped = new Map(
+    [...bitmaps].map(([name, bitmap]) => [
+      name,
+      cropToBitmap(bitmap, 0, 0, width, height),
+    ]),
+  );
+
+  const states = [...cropped.keys()];
+  const out: { a: string; b: string; ratio: number; dimensionsMatch: boolean }[] =
+    [];
+  for (let i = 0; i < states.length; i++) {
+    for (let j = i + 1; j < states.length; j++) {
+      const a = states[i];
+      const b = states[j];
+      const left = a === undefined ? undefined : cropped.get(a);
+      const right = b === undefined ? undefined : cropped.get(b);
+      if (a === undefined || b === undefined || !left || !right) continue;
+      const comparison = compareBitmaps(left, right, tolerance);
+      out.push({
+        a,
+        b,
+        ratio: comparison.ratio,
+        dimensionsMatch: comparison.dimensionsMatch,
+      });
+    }
+  }
+  return out;
 }
 
 test.beforeAll(() => {
@@ -104,6 +145,10 @@ test("contrast, a11y and screenshots across every route and both themes", async 
         for (const handle of await page.locator("[data-shot]").all()) {
           const name = await handle.getAttribute("data-shot");
           if (name === null) continue;
+          // The FocusRing shot is pointless unless something is focused in it.
+          if (name === "FocusRing") {
+            await handle.locator("a").first().focus();
+          }
           const file = join(".verify", "shots", `${name}.${theme}.png`);
           await handle.screenshot({ path: join(process.cwd(), file) });
           shots.push({ name, theme, file: file.split("\\").join("/") });
@@ -146,6 +191,8 @@ test.describe("mark optics", () => {
       size: number;
       variant: string;
       cutEdgeFraction: number;
+      cutSideFraction: number;
+      cornerIsSquare: boolean;
       inkFraction: number;
     }[] = [];
 
@@ -197,10 +244,25 @@ test.describe("mark optics", () => {
         if (!isInk(bitmap, bottom * bitmap.width + x)) cut++;
       }
 
+      // How much of the whole bottom edge is gone, counted from the right.
+      // The design system states 46% for the smoothed mark and 52% for the
+      // small one; this is what tells those two files apart.
+      let cutFromRight = 0;
+      for (let x = maxX; x >= minX; x--) {
+        if (isInk(bitmap, bottom * bitmap.width + x)) break;
+        cutFromRight++;
+      }
+
+      // The smoothed mark rounds its corners at 5.5% of the side; the small
+      // one squares them. Sample the corner pixel itself.
+      const cornerIsSquare = isInk(bitmap, minY * bitmap.width + minX);
+
       renders.push({
         size,
         variant,
         cutEdgeFraction: halfWidth === 0 ? 0 : cut / halfWidth,
+        cutSideFraction: boxWidth === 0 ? 0 : cutFromRight / boxWidth,
+        cornerIsSquare,
         inkFraction: ink / (boxWidth * boxHeight),
       });
     }
@@ -237,23 +299,10 @@ test.describe("glyphs at the size they ship at", () => {
         join(process.cwd(), ".verify", "shots", `dot9-${state}.png`),
         buffer,
       );
-      const bitmap = decodePng(buffer);
-      const side = Math.min(bitmap.width, bitmap.height);
-      bitmaps.set(state, cropToBitmap(bitmap, 0, 0, side, side));
+      bitmaps.set(state, decodePng(buffer));
     }
 
-    const states = [...bitmaps.keys()];
-    const shippedSize: { a: string; b: string; ratio: number }[] = [];
-    for (let i = 0; i < states.length; i++) {
-      for (let j = i + 1; j < states.length; j++) {
-        const a = states[i];
-        const b = states[j];
-        const left = a === undefined ? undefined : bitmaps.get(a);
-        const right = b === undefined ? undefined : bitmaps.get(b);
-        if (a === undefined || b === undefined || !left || !right) continue;
-        shippedSize.push({ a, b, ratio: differenceRatio(left, right, 16) });
-      }
-    }
+    const shippedSize = comparePairwise(bitmaps, 16);
 
     writeFileSync(
       join(VERIFY, "glyphs-9px.json"),
@@ -290,26 +339,31 @@ test("the attestation survives being printed in greyscale", async ({ page }) => 
     const buffer = await dot.screenshot({ scale: "css" });
     const file = join(".verify", "shots", `glyph-${state}.png`);
     writeFileSync(join(process.cwd(), file), buffer);
-    const bitmap = decodePng(buffer);
-    // Compare a common square so sub-pixel sizing cannot skew the result.
-    const side = Math.min(bitmap.width, bitmap.height);
-    bitmaps.set(state, cropToBitmap(bitmap, 0, 0, side, side));
+    bitmaps.set(state, decodePng(buffer));
     glyphs.push({ state, file: file.split("\\").join("/") });
   }
 
-  const states = [...bitmaps.keys()];
-  const pairwiseDifference: { a: string; b: string; ratio: number }[] = [];
-  for (let i = 0; i < states.length; i++) {
-    for (let j = i + 1; j < states.length; j++) {
-      const a = states[i];
-      const b = states[j];
-      if (a === undefined || b === undefined) continue;
-      const left = bitmaps.get(a);
-      const right = bitmaps.get(b);
-      if (!left || !right) continue;
-      pairwiseDifference.push({ a, b, ratio: differenceRatio(left, right, 16) });
-    }
-  }
+  const pairwiseDifference = comparePairwise(bitmaps, 16);
+
+  // The printed page itself: emulate print media and read the card back, so
+  // the gate is not resting on the PDF's byte count alone.
+  await open(page, `${CONSOLE}/#/attestations`, "void");
+  await page.emulateMedia({ media: "print" });
+  const printed = page.getByRole("article").first();
+  // The page's own ground, not the attestation's tint: the card is deliberately
+  // `proof-dim` in both themes, so reading its background would say nothing
+  // about which theme printed.
+  const printedGround = await page.evaluate(
+    () => getComputedStyle(document.body).backgroundColor,
+  );
+  const printedRows = await printed.locator("dt").allInnerTexts();
+  const printedButtons = await printed.evaluate(
+    (el) =>
+      [...el.querySelectorAll(".qed-button")].filter(
+        (b) => getComputedStyle(b).display !== "none",
+      ).length,
+  );
+  await page.emulateMedia({ media: "screen" });
 
   writeFileSync(
     join(VERIFY, "print.json"),
@@ -318,6 +372,11 @@ test("the attestation survives being printed in greyscale", async ({ page }) => 
         pdf: { file: ".verify/attestation.pdf", bytes: pdf.byteLength },
         glyphs,
         pairwiseDifference,
+        printed: {
+          ground: printedGround,
+          rows: printedRows,
+          buttons: printedButtons,
+        },
       },
       null,
       2,

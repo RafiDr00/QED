@@ -9,7 +9,7 @@ import type { FunctionRun, RunResult } from "@qed/ui";
 export const HERO_RUN: RunResult = {
   command: "qed check --base origin/main",
   changedFunctions: 41,
-  verifiableFunctions: 6,
+  verifiableFunctions: 7,
   duration: "2m 14s",
   runs: [
     {
@@ -38,6 +38,21 @@ export const HERO_RUN: RunResult = {
           head: "0.8",
           repro: "qed repro 9f2a1c",
           foundAt: { index: 7, of: 9110 },
+        },
+      },
+    },
+    {
+      path: "ledger/reconciliation/periodic.ts",
+      symbol: "reconcileOutstandingSettlementBatches",
+      verdict: {
+        state: "DIVERGED",
+        counterexample: {
+          input:
+            '{ batches: [{ id: "b-0041", cents: 19999, currency: "EUR" }], cutoff: "2026-09-30T23:59:59Z" }',
+          base: "19999",
+          head: "19998",
+          repro: "qed repro 4c81de",
+          foundAt: { index: 2143, of: 7500 },
         },
       },
     },
@@ -124,14 +139,14 @@ export interface Measure {
 /** Published limits. The abstain rate is on the home page on purpose. */
 export const MEASURES: readonly Measure[] = [
   {
-    value: "31%",
+    value: "29%",
     label: "ABSTAIN RATE",
-    note: "of changed functions in the last 30 days across public runs. The limit is published because publishing it is what makes the rest believable.",
+    note: "2 of the 7 verifiable functions in this run. The limit is published because publishing it is what makes the rest believable.",
   },
   {
-    value: "6",
+    value: "7",
     label: "VERIFIABLE OF 41",
-    note: "a typical run on a service repository. The other 35 functions touch a database, a clock or a network socket.",
+    note: "the run above, on a service repository. The other 34 functions touch a database, a clock or a network socket.",
   },
   {
     value: "2m 14s",

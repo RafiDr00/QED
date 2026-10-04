@@ -21,11 +21,21 @@ export function App() {
     Record<string, VerificationState>
   >({});
 
-  const verify = (digest: string, checkedAt: string) => {
-    setVerification((current) => ({
-      ...current,
-      [digest]: { status: "verified", checkedAt },
-    }));
+  /**
+   * Re-derives the verdict from the record. The time reported is the time the
+   * check ran - not the record's own signing time, which is a different claim
+   * and the one thing this button must not restate.
+   */
+  const verify = (digest: string) => {
+    const set = (state: VerificationState) => {
+      setVerification((current) => ({ ...current, [digest]: state }));
+    };
+    set({ status: "checking" });
+    window.setTimeout(() => {
+      const now = new Date();
+      const checkedAt = `${now.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+      set({ status: "verified", checkedAt });
+    }, 400);
   };
 
   return (

@@ -15,7 +15,7 @@ import { gzipSync } from "node:zlib";
 import { extname, join, relative, sep } from "node:path";
 
 import { contrastHex, round2 } from "./color.ts";
-import { decodePng, differenceRatio, lumaStats } from "./png.ts";
+import { compareBitmaps, decodePng, lumaStats } from "./png.ts";
 
 const root = process.cwd();
 const verifyDir = join(root, ".verify");
@@ -160,6 +160,8 @@ const DECLARED_PAIRS: {
   { fg: "focus", bg: "bg-raised", kind: "nonText", where: "focus ring on card" },
   { fg: "focus", bg: "bg-sunk", kind: "nonText", where: "focus ring on terminal" },
   { fg: "focus", bg: "proof-dim", kind: "nonText", where: "focus ring on attestation" },
+  { fg: "proof", bg: "proof-dim", kind: "nonText", where: "attestation eyebrow mark" },
+  { fg: "ink", bg: "proof-dim", kind: "nonText", where: "attestation verdict glyph" },
   { fg: "proof", bg: "bg", kind: "nonText", where: "EQUIVALENT dot" },
   { fg: "break", bg: "bg", kind: "nonText", where: "DIVERGED dot" },
   { fg: "open", bg: "bg", kind: "nonText", where: "ABSTAINED dot ring" },
@@ -263,7 +265,12 @@ const g1: Gate = {
 
 // ============================================================ G2 token purity
 
-const PURITY_ROOTS = ["packages/ui", "apps/web", "apps/console"];
+const PURITY_ROOTS = [
+  "packages/ui",
+  "packages/cli-render",
+  "apps/web",
+  "apps/console",
+];
 
 /**
  * Explicit, reasoned exemptions. Everything else in those three trees must
@@ -277,6 +284,9 @@ const PURITY_EXEMPT = [
   /packages\/ui\/src\/generated\//,
   // The fallback-metric override file is produced by a measurement run.
   /packages\/ui\/src\/styles\/fallback-metrics\.generated\.css$/,
+  // The favicon is qed-mark-16.svg byte-for-byte; a browser tab icon cannot
+  // read a custom property, and G4 hashes it with the rest.
+  /apps\/(?:web|console)\/public\/favicon\.svg$/,
 ];
 
 const HEX_RE = /#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g;
@@ -599,28 +609,61 @@ const g4: Gate = {
       const known = new Set(
         Object.values(baseline.files).flatMap((entry) => entry.paths),
       );
-      let found = 0;
-      for (const file of shipped) {
+
+      // 1. The prerendered HTML carries real <svg class="qed-logo"> blocks.
+      //    Every path inside one must be a design-system path - no prefix
+      //    filter, because a filter that only looks at paths which already
+      //    start like the real thing cannot see a redrawn mark.
+      let inspectedBlocks = 0;
+      let inspectedPaths = 0;
+      for (const file of shipped.filter((f) => extname(f) === ".html")) {
         const text = readFileSync(file, "utf8");
-        // Only look at the logo's own viewBoxes; the verdict glyphs are drawn
-        // by this repo and are not design-system assets.
-        for (const m of text.matchAll(/\sd=\\?"(M[0-9][^"\\]{20,})\\?"/g)) {
-          const d = m[1];
-          if (d === undefined) continue;
-          if (/^M(?:3\.1|2\.0|37\.2|147\.886|214\.0|284\.28)/.test(d)) {
-            found++;
+        for (const block of text.matchAll(
+          /<svg[^>]*class="[^"]*qed-logo[^"]*"[\s\S]*?<\/svg>/g,
+        )) {
+          inspectedBlocks++;
+          for (const m of block[0].matchAll(/\sd="([^"]+)"/g)) {
+            const d = m[1];
+            if (d === undefined) continue;
+            inspectedPaths++;
             if (!known.has(d)) {
               failures.push(
-                `${rel(file)}: a logo path was redrawn - "${d.slice(0, 40)}..." is not in the design system`,
+                `${rel(file)}: a path inside a .qed-logo svg is not in the design system - "${d.slice(0, 48)}..."`,
               );
             }
           }
         }
       }
-      if (found === 0) {
+
+      // 2. The bundles hold the paths as string literals rather than markup.
+      //    If a bundle contains the start of a logo path it must contain all
+      //    of it, so a truncated or edited path cannot slip through.
+      let bundlesWithLogos = 0;
+      for (const file of shipped.filter((f) => extname(f) === ".js")) {
+        const text = readFileSync(file, "utf8");
+        let holdsLogo = false;
+        for (const [name, entry] of Object.entries(baseline.files)) {
+          for (const d of entry.paths) {
+            const head = d.slice(0, 24);
+            if (!text.includes(head)) continue;
+            holdsLogo = true;
+            if (!text.includes(d)) {
+              failures.push(
+                `${rel(file)}: a path from ${name} starts correctly but does not match - it was edited`,
+              );
+            }
+          }
+        }
+        if (holdsLogo) bundlesWithLogos++;
+      }
+
+      if (inspectedBlocks === 0 && bundlesWithLogos === 0) {
         failures.push("no logo path data found in the shipped output at all");
       } else {
-        notes.push(`${found} logo paths in the shipped output, all verbatim`);
+        notes.push(
+          `${inspectedPaths} paths in ${inspectedBlocks} shipped .qed-logo blocks, ` +
+            `${bundlesWithLogos} bundle(s) carrying logo paths, all verbatim`,
+        );
       }
     }
 
@@ -636,9 +679,28 @@ interface MarkEvidence {
     size: number;
     variant: string;
     cutEdgeFraction: number;
+    cutSideFraction: number;
+    cornerIsSquare: boolean;
     inkFraction: number;
   }[];
 }
+
+/**
+ * What each file is, from the design system's own table:
+ *   qed-mark.svg     corners 5.5% of the side, cut 46%, 32px and up
+ *   qed-mark-16.svg  corners square,            cut 52%, 24px and below
+ *
+ * Checking the cut as a fraction of the side, and whether the corner is
+ * square, is what actually tells the two files apart. Checking only that
+ * "something is cut" passes either file, and would pass a mark with a 20% cut.
+ */
+const MARK_SPEC = {
+  mark: { cut: 0.46, cornerIsSquare: false },
+  "mark-16": { cut: 0.52, cornerIsSquare: true },
+} as const;
+
+/** Rasterising a 16px mark at 4x leaves about this much slack. */
+const CUT_TOLERANCE = 0.04;
 
 const g5: Gate = {
   id: "G5",
@@ -668,8 +730,24 @@ const g5: Gate = {
           `${size}px: the cut covers ${round2(render.cutEdgeFraction * 100)}% of the bottom-right quadrant edge, needs 40%`,
         );
       }
+
+      const spec = MARK_SPEC[expected];
+      const drift = Math.abs(render.cutSideFraction - spec.cut);
+      if (drift > CUT_TOLERANCE) {
+        failures.push(
+          `${size}px: the cut is ${round2(render.cutSideFraction * 100)}% of the side, and '${expected}' is drawn at ${round2(spec.cut * 100)}%`,
+        );
+      }
+      if (render.cornerIsSquare !== spec.cornerIsSquare) {
+        failures.push(
+          `${size}px: corner is ${render.cornerIsSquare ? "square" : "smoothed"}, and '${expected}' has ${spec.cornerIsSquare ? "square" : "smoothed"} corners`,
+        );
+      }
+
       notes.push(
-        `${size}px ${render.variant}: cut ${round2(render.cutEdgeFraction * 100)}% of the quadrant edge, ink ${round2(render.inkFraction * 100)}%`,
+        `${size}px ${render.variant}: cut ${round2(render.cutSideFraction * 100)}% of the side ` +
+          `(${render.cornerIsSquare ? "square" : "smoothed"} corners), ` +
+          `${round2(render.cutEdgeFraction * 100)}% of the quadrant edge, ink ${round2(render.inkFraction * 100)}%`,
       );
     }
     return failures.length === 0 ? pass(notes) : fail(failures, notes);
@@ -727,13 +805,21 @@ const g6: Gate = {
 
       const [a, b] = bitmaps;
       if (a && b) {
-        const diff = differenceRatio(a, b);
-        if (diff < 0.1) {
+        const diff = compareBitmaps(a, b);
+        // Both themes share every metric, so a size difference means the
+        // shot caught the component mid-layout - not a theme difference.
+        if (!diff.dimensionsMatch) {
           failures.push(
-            `${name}: void and paper differ on only ${round2(diff * 100)}% of pixels - the theme is not switching`,
+            `${name}: the two theme shots are different sizes (${a.width}x${a.height} vs ${b.width}x${b.height}) - the comparison would prove nothing`,
+          );
+        } else if (diff.ratio < 0.1) {
+          failures.push(
+            `${name}: void and paper differ on only ${round2(diff.ratio * 100)}% of pixels - the theme is not switching`,
           );
         } else {
-          notes.push(`${name}: themes differ on ${round2(diff * 100)}% of pixels`);
+          notes.push(
+            `${name}: themes differ on ${round2(diff.ratio * 100)}% of pixels`,
+          );
         }
       }
     }
@@ -762,8 +848,10 @@ const g7: Gate = {
     const notes: string[] = [];
 
     for (const t of evidence.invalid) {
-      if (t.actualErrors === 0) {
-        failures.push(`${t.file}: compiled cleanly, but it must not type-check`);
+      if (t.actualErrors < t.expectedErrors) {
+        failures.push(
+          `${t.file}: ${t.actualErrors} type errors, expected at least ${t.expectedErrors} - it must not type-check`,
+        );
       } else {
         notes.push(`${t.file}: rejected by the compiler (${t.actualErrors} errors)`);
       }
@@ -853,11 +941,26 @@ const g9: Gate = {
 
 // ====================================================================== G10 print
 
+interface GlyphComparison {
+  a: string;
+  b: string;
+  ratio: number;
+  dimensionsMatch: boolean;
+}
+
 interface PrintEvidence {
   pdf: { file: string; bytes: number };
   glyphs: { state: string; file: string }[];
-  pairwiseDifference: { a: string; b: string; ratio: number }[];
+  pairwiseDifference: GlyphComparison[];
+  /** Read back from the page under print media emulation. */
+  printed: { ground: string; rows: string[]; buttons: number };
 }
+
+/** The Paper ground, which is what a printed page must be on. */
+const PAPER_BG = "rgb(250, 249, 246)";
+
+/** Rows the attestation may never drop to save space. */
+const REQUIRED_ROWS = ["VERDICT", "INPUTS", "CONTROLS", "TOLERANCES", "ENGINE"];
 
 const g10: Gate = {
   id: "G10",
@@ -874,10 +977,40 @@ const g10: Gate = {
       notes.push(`PDF ${evidence.pdf.bytes} B at ${evidence.pdf.file}`);
     }
 
+    // A byte count alone would pass a blank page, so read the printed card
+    // back from the page under print media.
+    const printed = evidence.printed;
+    if (printed.ground !== PAPER_BG) {
+      failures.push(
+        `under print media the attestation sits on ${printed.ground}, not the Paper ground ${PAPER_BG} - ` +
+          `a reader who used the theme toggle would print the audit page in Void`,
+      );
+    } else {
+      notes.push("print media resolves to Paper even with [data-theme] set");
+    }
+    for (const row of REQUIRED_ROWS) {
+      if (!printed.rows.includes(row)) {
+        failures.push(`the printed attestation is missing its ${row} row`);
+      }
+    }
+    if (printed.buttons !== 0) {
+      failures.push(
+        `${printed.buttons} button(s) survive into print - the filed page has nothing to press`,
+      );
+    } else {
+      notes.push(`${printed.rows.length} field rows printed, no controls`);
+    }
+
     if (evidence.glyphs.length !== 3) {
       failures.push(`expected 3 verdict glyphs in greyscale, found ${evidence.glyphs.length}`);
     }
     for (const pair of evidence.pairwiseDifference) {
+      if (!pair.dimensionsMatch) {
+        failures.push(
+          `${pair.a} and ${pair.b} were rendered at different sizes - the comparison is not a shape comparison`,
+        );
+        continue;
+      }
       if (pair.ratio < 0.08) {
         failures.push(
           `${pair.a} and ${pair.b} differ on only ${round2(pair.ratio * 100)}% of pixels in greyscale - colour is carrying the verdict`,
@@ -893,12 +1026,18 @@ const g10: Gate = {
     // And again at the 9px the chips actually render, which is the size a
     // reader has to tell them apart at.
     const shipped = readEvidence("glyphs-9px.json") as {
-      shippedSize: { a: string; b: string; ratio: number }[];
+      shippedSize: GlyphComparison[];
     } | null;
     if (!shipped) {
       failures.push("no .verify/glyphs-9px.json from the e2e run");
     } else {
       for (const pair of shipped.shippedSize) {
+        if (!pair.dimensionsMatch) {
+          failures.push(
+            `at 9px, ${pair.a} and ${pair.b} were rendered at different sizes`,
+          );
+          continue;
+        }
         if (pair.ratio < 0.08) {
           failures.push(
             `at 9px, ${pair.a} and ${pair.b} differ on only ${round2(pair.ratio * 100)}% of pixels in greyscale`,

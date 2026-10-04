@@ -1,6 +1,7 @@
 import { VerdictTable } from "@qed/ui";
 
 import { EMPTY_RUN, VERDICT_ROWS } from "../fixtures.js";
+import { formatCount } from "@qed/ui";
 
 /** Every function in the run, with its evidence in the third column. */
 export function VerdictsView() {
@@ -21,7 +22,11 @@ export function VerdictsView() {
             Nothing verifiable
           </h2>
         </div>
-        <VerdictTable caption="A run with no verifiable function" runs={EMPTY_RUN.runs} />
+        <VerdictTable
+          caption="A run with no verifiable function"
+          runs={EMPTY_RUN.runs}
+          empty={`${formatCount(EMPTY_RUN.changedFunctions)} functions changed. None could be run soundly, so none has a verdict.`}
+        />
       </section>
     </div>
   );
