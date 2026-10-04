@@ -1,0 +1,41 @@
+name: baselines
+
+# Generates the Linux visual baselines on the same image CI runs on, so the
+# visual gate can run there against baselines that were not written by the run
+# comparing against them. Dispatch it, download the artifact, commit the PNGs
+# beside the Windows ones, and drop QED_SKIP_VISUAL from verify.yml.
+on:
+  workflow_dispatch:
+
+jobs:
+  baselines:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build
+        run: pnpm build
+
+      - name: Write baselines
+        run: pnpm exec playwright test tests/e2e/visual.spec.ts --update-snapshots=all
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-baselines
+          path: tests/e2e/visual.spec.ts-snapshots/*linux.png
+          retention-days: 1
