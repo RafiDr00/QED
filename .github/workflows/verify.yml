@@ -29,7 +29,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Enable pnpm
         run: corepack enable
@@ -53,6 +53,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: verify-evidence
+          # .verify is a dot-directory, which this action treats as hidden and
+          # skips unless told otherwise.
+          include-hidden-files: true
           path: |
             .verify/*.json
             .verify/shots
