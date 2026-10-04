@@ -124,7 +124,15 @@ export function Home() {
               <li key={tier.name}>
                 <Card as="div">
                   <h3 className="t-heading">{tier.name}</h3>
-                  <p className="t-numeral web-tier-price">{tier.price}</p>
+                  <p
+                    className={
+                      /^[$\d]/.test(tier.price)
+                        ? "t-numeral web-tier-price"
+                        : "t-display-sm web-tier-price"
+                    }
+                  >
+                    {tier.price}
+                  </p>
                   <p className="t-mono-sm web-tier-unit">{tier.unit}</p>
                   <p className="t-body-sm qed-prose web-tier-summary">
                     {tier.summary}

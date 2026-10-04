@@ -42,13 +42,13 @@ export const HERO_RUN: RunResult = {
       },
     },
     {
-      path: "ledger/reconciliation/periodic.ts",
-      symbol: "reconcileOutstandingSettlementBatches",
+      path: "ledger/reconciliation.ts",
+      symbol: "reconcileSettlementBatches",
       verdict: {
         state: "DIVERGED",
         counterexample: {
           input:
-            '{ batches: [{ id: "b-0041", cents: 19999, currency: "EUR" }], cutoff: "2026-09-30T23:59:59Z" }',
+            '{ batches: 1, cutoff: "2026-09-30T23:59:59Z" }',
           base: "19999",
           head: "19998",
           repro: "qed repro 4c81de",

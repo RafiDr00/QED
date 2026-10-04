@@ -1,7 +1,7 @@
 # FLAWS
 
 Review of this repository against the QED design system
-(<https://claude.ai/artifact/Rc4MG2zsgmczgdkQxHJB4B>, version `1791100908-8a30`),
+([https://claude.ai/artifact/Rc4MG2zsgmczgdkQxHJB4B](https://claude.ai/artifact/Rc4MG2zsgmczgdkQxHJB4B), version `1791100908-8a30`),
 read directly from the artifact. Where code and the system disagree, the system
 wins. `DECISIONS.md` was read last and several of its entries are challenged below.
 
@@ -317,12 +317,12 @@ drawn from 2→22, i.e. 20 of 24 units).
 
 **Measured** from `LogoMarks-void-chromium-win32.png` (green bbox per mark):
 
-| `size` | declared | drawn |
-| --- | --- | --- |
-| `xs` | 16px | **12px** |
-| `sm` | 24px | **20px** |
-| `md` | 32px | **26px** |
-| `lg` | 48px | **40px** |
+| `size` | declared | drawn          |
+| -------- | -------- | -------------- |
+| `xs`   | 16px     | **12px** |
+| `sm`   | 24px     | **20px** |
+| `md`   | 32px     | **26px** |
+| `lg`   | 48px     | **40px** |
 
 **Violates:** `packages/tokens/src/component-tokens.json:21-24`, which sources
 `logo-xs: 16px` from `project/components/Attestation/README.md` — *"**Eyebrow**,
@@ -572,8 +572,7 @@ ever becomes computed.
 `empty = "No verifiable function changed in this run."`, rendered for `EMPTY_RUN`
 in `apps/console/src/views/VerdictsView.tsx:24`.
 
-`EMPTY_RUN` (`apps/console/src/fixtures.ts:87-93`) is `changedFunctions: 3,
-verifiableFunctions: 0`. Three functions *did* change; none was verifiable. The
+`EMPTY_RUN` (`apps/console/src/fixtures.ts:87-93`) is `changedFunctions: 3, verifiableFunctions: 0`. Three functions *did* change; none was verifiable. The
 sentence says the opposite.
 
 Compounding it: `tests/e2e/visual.spec.ts-snapshots/TerminalOutputEmpty-void-…png`
@@ -628,8 +627,7 @@ one) and state the denominator in the label on both surfaces.
 
 ### F-020 · On Paper the attestation's hairline and foot rule are invisible (1.03:1), and D-004 means no gate looks
 
-**File:** `packages/ui/src/styles/attestation.css:9` (`border: var(--border-hair)
-solid var(--rule)`) and `:73` (`border-top: var(--border-hair) solid var(--rule)`).
+**File:** `packages/ui/src/styles/attestation.css:9` (`border: var(--border-hair) solid var(--rule)`) and `:73` (`border-top: var(--border-hair) solid var(--rule)`).
 
 Computed from `packages/tokens/src/tokens.json`: `rule` on `proof-dim` is
 **1.03:1 in Paper** (`#e3e1d9` on `#b9f0d4`) against 2.87:1 in Void. Visible in
@@ -706,8 +704,7 @@ would not fail anything.
 
 **Severity:** should-fix
 
-**Fix:** add `{ fg: "proof", bg: "proof-dim", kind: "nonText", where: "attestation
-eyebrow mark" }` to `DECLARED_PAIRS`, and extend the sweep to record
+**Fix:** add `{ fg: "proof", bg: "proof-dim", kind: "nonText", where: "attestation eyebrow mark" }` to `DECLARED_PAIRS`, and extend the sweep to record
 `fill`/`stroke` on `svg [data-logo]` and `svg.qed-dot` against their ground.
 
 ---
@@ -916,8 +913,7 @@ evidence and a badge"*).
 
 **Severity:** taste
 
-**Fix:** replace with a fact — `QED · deterministic verification · 31% abstain
-rate, last 30 days` — and let the layout demonstrate the rule rather than
+**Fix:** replace with a fact — `QED · deterministic verification · 31% abstain rate, last 30 days` — and let the layout demonstrate the rule rather than
 announcing it.
 
 ---
@@ -934,8 +930,7 @@ ring in exactly that case.
 **Fix:** either delete the rule (it is already the UA default once
 `:focus-visible` is used) or fix the comment. If keeping the ring for mouse-focused
 scroll regions is actually wanted, add
-`.qed-table-scroll:focus, .qed-pane-scroll:focus { outline: var(--border-rule)
-solid var(--focus); }`.
+`.qed-table-scroll:focus, .qed-pane-scroll:focus { outline: var(--border-rule) solid var(--focus); }`.
 
 ---
 
@@ -1006,15 +1001,15 @@ found them.
 
 ## Blocking — all fixed
 
-| | What changed |
-| --- | --- |
-| **F-001** | `qed-mark-16.svg` is copied to `apps/*/public/favicon.svg` and linked from both heads. It is the same bytes as the design-system file, so G4 covers it. |
-| **F-002** | The lockup is composed rather than shipped from `qed-logotype.svg`: `Logo.tsx` draws the wordmark plus whichever mark the *drawn* size calls for, placed by the Logotype README's own rule (0.78× x-height, gap 30 units, bottom-aligned to the baseline). The header and hero lockups now carry `mark-16`, confirmed from the live page: `data-lockup-mark="mark-16"` at both `sm` and `lg`. |
-| **F-003** | A record that did not re-derive loses its seal: `[data-verification="mismatch"]` drops the ground to `bg-raised`, turns the left rule `break`, and sets the reason in `break`. Covered by a new unit test. |
-| **F-004** | The console no longer restates the record's signing time. `verify()` runs the check, then reports the time the check ran. |
-| **F-005** | `differenceRatio` returned `1` on a size mismatch, which made two of three comparisons constant. It is now `compareBitmaps`, which compares the overlapping region and reports `dimensionsMatch` separately; G6 and G10 fail on a mismatch instead of reading a sentinel. All glyph bitmaps are cropped to one common box before comparison. The 9px numbers are now real: 56%, 57%, 37%. The 4× device scale is kept deliberately — it rasterises the 9px CSS size finely, it does not change the size being rendered. |
-| **F-006** | Column widths are derived from the terminal's own convention rather than from arbitrary caps: `buildRunLines` takes `columns` (default 80), shrinks the symbol column first and then the path column to fit, and gives any row that outgrows its column its own evidence line. `--c-pane-max` is now 776px — a measured 728px for 80 columns of Martian Mono at 13px, plus padding. One row with a 33-character path *and* a 37-character symbol still runs to 86 columns; it is wider than 80 characters of content, and it keeps its full names rather than being truncated. |
-| **F-007** | The print rule is now `:root:not([data-theme="paper"])`, so a reader who has used the toggle still prints Paper. G10 reads the page back under print media emulation and asserts the ground, the five field rows, and that no control survives into print. |
+|                 | What changed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **F-001** | `qed-mark-16.svg` is copied to `apps/*/public/favicon.svg` and linked from both heads. It is the same bytes as the design-system file, so G4 covers it.                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| **F-002** | The lockup is composed rather than shipped from`qed-logotype.svg`: `Logo.tsx` draws the wordmark plus whichever mark the *drawn* size calls for, placed by the Logotype README's own rule (0.78× x-height, gap 30 units, bottom-aligned to the baseline). The header and hero lockups now carry `mark-16`, confirmed from the live page: `data-lockup-mark="mark-16"` at both `sm` and `lg`.                                                                                                                                                                            |
+| **F-003** | A record that did not re-derive loses its seal:`[data-verification="mismatch"]` drops the ground to `bg-raised`, turns the left rule `break`, and sets the reason in `break`. Covered by a new unit test.                                                                                                                                                                                                                                                                                                                                                                      |
+| **F-004** | The console no longer restates the record's signing time.`verify()` runs the check, then reports the time the check ran.                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **F-005** | `differenceRatio` returned `1` on a size mismatch, which made two of three comparisons constant. It is now `compareBitmaps`, which compares the overlapping region and reports `dimensionsMatch` separately; G6 and G10 fail on a mismatch instead of reading a sentinel. All glyph bitmaps are cropped to one common box before comparison. The 9px numbers are now real: 56%, 57%, 37%. The 4× device scale is kept deliberately — it rasterises the 9px CSS size finely, it does not change the size being rendered.                                                      |
+| **F-006** | Column widths are derived from the terminal's own convention rather than from arbitrary caps:`buildRunLines` takes `columns` (default 80), shrinks the symbol column first and then the path column to fit, and gives any row that outgrows its column its own evidence line. `--c-pane-max` is now 776px — a measured 728px for 80 columns of Martian Mono at 13px, plus padding. One row with a 33-character path *and* a 37-character symbol still runs to 86 columns; it is wider than 80 characters of content, and it keeps its full names rather than being truncated. |
+| **F-007** | The print rule is now`:root:not([data-theme="paper"])`, so a reader who has used the toggle still prints Paper. G10 reads the page back under print media emulation and asserts the ground, the five field rows, and that no control survives into print.                                                                                                                                                                                                                                                                                                                            |
 
 ## Should-fix — fixed
 

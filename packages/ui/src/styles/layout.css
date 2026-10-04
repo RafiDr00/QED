@@ -45,7 +45,7 @@
 .qed-grid {
   display: grid;
   gap: var(--space-6);
-  grid-template-columns: repeat(auto-fit, minmax(28ch, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(22ch, 1fr));
 }
 
 .qed-skip-link {
