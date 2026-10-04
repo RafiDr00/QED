@@ -15,6 +15,7 @@ import { gzipSync } from "node:zlib";
 import { extname, join, relative, sep } from "node:path";
 
 import { contrastHex, round2 } from "./color.ts";
+import { geometryOf, pathDataOf } from "./logo-geometry.ts";
 import { compareBitmaps, decodePng, lumaStats } from "./png.ts";
 
 const root = process.cwd();
@@ -325,8 +326,8 @@ function withoutComments(text: string, kind: "ts" | "css" | "other"): string {
 }
 
 /**
- * A media query cannot read a custom property, so breakpoints are the one
- * place a px literal has to appear in a stylesheet. They are still declared -
+ * A media or container query cannot read a custom property, so breakpoints are
+ * the one place a px literal has to appear in a stylesheet. They are still declared -
  * in packages/tokens/src/component-tokens.json as `bp-*` - and this gate
  * asserts every breakpoint in the CSS is one of the declared values.
  */
@@ -340,7 +341,7 @@ const declaredBreakpoints = new Set(
     .map((t) => t.value),
 );
 
-const MEDIA_PRELUDE = /@media[^{]*\{/g;
+const MEDIA_PRELUDE = /@(?:media|container)[^{]*\{/g;
 
 const g2: Gate = {
   id: "G2",
@@ -536,12 +537,14 @@ interface LogoBaseline {
   source: string;
   files: Record<
     string,
-    { artifactSha256: string; pathDataSha256: string; paths: string[] }
+    {
+      artifactSha256: string;
+      pathDataSha256: string;
+      geometrySha256: string;
+      paths: string[];
+      geometry: string[];
+    }
   >;
-}
-
-function pathDataOf(svg: string): string[] {
-  return [...svg.matchAll(/\sd="([^"]+)"/g)].map((m) => m[1] ?? "");
 }
 
 const sha256 = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
@@ -571,10 +574,14 @@ const g4: Gate = {
           `${name}: file bytes differ from the design system (${fileHash.slice(0, 12)} != ${entry.artifactSha256.slice(0, 12)})`,
         );
       }
-      const paths = pathDataOf(raw.toString("utf8"));
-      const hash = sha256(paths.join("|"));
-      if (hash !== entry.pathDataSha256) {
+      const text = raw.toString("utf8");
+      const paths = pathDataOf(text);
+      if (sha256(paths.join("|")) !== entry.pathDataSha256) {
         failures.push(`${name}: path 'd' data drifted`);
+      }
+      // Rects and the viewBox too: the wordmark's stems are rects.
+      if (sha256(geometryOf(text).join("|")) !== entry.geometrySha256) {
+        failures.push(`${name}: the drawing's geometry drifted (viewBox or a rect)`);
       }
     }
 
@@ -681,6 +688,7 @@ interface MarkEvidence {
     cutEdgeFraction: number;
     cutSideFraction: number;
     cornerIsSquare: boolean;
+    cornerRadiusFraction: number;
     inkFraction: number;
   }[];
 }
@@ -695,8 +703,8 @@ interface MarkEvidence {
  * "something is cut" passes either file, and would pass a mark with a 20% cut.
  */
 const MARK_SPEC = {
-  mark: { cut: 0.46, cornerIsSquare: false },
-  "mark-16": { cut: 0.52, cornerIsSquare: true },
+  mark: { cut: 0.46, cornerIsSquare: false, radius: 0.055 },
+  "mark-16": { cut: 0.52, cornerIsSquare: true, radius: 0 },
 } as const;
 
 /** Rasterising a 16px mark at 4x leaves about this much slack. */
@@ -738,6 +746,15 @@ const g5: Gate = {
           `${size}px: the cut is ${round2(render.cutSideFraction * 100)}% of the side, and '${expected}' is drawn at ${round2(spec.cut * 100)}%`,
         );
       }
+      // A squircle's ink reaches the top edge sooner than its nominal radius,
+      // so the measured inset is a fraction of it - but a 15% corner would
+      // still be nowhere near a 5.5% one.
+      const radiusDrift = Math.abs(render.cornerRadiusFraction - spec.radius);
+      if (radiusDrift > 0.05) {
+        failures.push(
+          `${size}px: the corner rounds at ${round2(render.cornerRadiusFraction * 100)}% of the side, and '${expected}' rounds at ${round2(spec.radius * 100)}%`,
+        );
+      }
       if (render.cornerIsSquare !== spec.cornerIsSquare) {
         failures.push(
           `${size}px: corner is ${render.cornerIsSquare ? "square" : "smoothed"}, and '${expected}' has ${spec.cornerIsSquare ? "square" : "smoothed"} corners`,
@@ -746,7 +763,7 @@ const g5: Gate = {
 
       notes.push(
         `${size}px ${render.variant}: cut ${round2(render.cutSideFraction * 100)}% of the side ` +
-          `(${render.cornerIsSquare ? "square" : "smoothed"} corners), ` +
+          `(${render.cornerIsSquare ? "square" : "smoothed"} corners, radius ${round2(render.cornerRadiusFraction * 100)}%), ` +
           `${round2(render.cutEdgeFraction * 100)}% of the quadrant edge, ink ${round2(render.inkFraction * 100)}%`,
       );
     }
@@ -811,6 +828,15 @@ const g6: Gate = {
         if (!diff.dimensionsMatch) {
           failures.push(
             `${name}: the two theme shots are different sizes (${a.width}x${a.height} vs ${b.width}x${b.height}) - the comparison would prove nothing`,
+          );
+        } else if (
+          // Void is the dark theme and Paper the light one; a palette that
+          // merely differed would pass the ratio check on its own.
+          lumaStats(a).mean >= lumaStats(b).mean
+        ) {
+          failures.push(
+            `${name}: the void shot is not darker than the paper one ` +
+              `(${round2(lumaStats(a).mean)} vs ${round2(lumaStats(b).mean)}) - the themes are not what they say`,
           );
         } else if (diff.ratio < 0.1) {
           failures.push(

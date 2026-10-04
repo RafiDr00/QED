@@ -20,6 +20,105 @@ export interface SweepResult {
   textColours: { color: string; selector: string }[];
 }
 
+/**
+ * The verdict glyphs carry meaning through an SVG `fill`, which the text sweep
+ * never sees because it reads `color`. WCAG 1.4.11 applies to them: they are
+ * non-text content that conveys state.
+ */
+export async function sweepGlyphFills(page: Page): Promise<SweptPair[]> {
+  return page.evaluate(() => {
+    const OPAQUE = (value: string) =>
+      value !== "" &&
+      value !== "transparent" &&
+      !/rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*0\s*\)/.test(value);
+
+    const out: SweptPair[] = [];
+    const seen = new Set<string>();
+
+    for (const glyph of Array.from(document.querySelectorAll("svg.qed-dot"))) {
+      const fill = getComputedStyle(glyph).fill;
+      let ground = "";
+      let current: Element | null = glyph.parentElement;
+      while (current) {
+        const background = getComputedStyle(current).backgroundColor;
+        if (OPAQUE(background)) {
+          ground = background;
+          break;
+        }
+        current = current.parentElement;
+      }
+      if (ground === "") ground = getComputedStyle(document.body).backgroundColor;
+
+      const state = glyph.getAttribute("data-state") ?? "unknown";
+      const key = `${fill}|${ground}|${state}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      out.push({
+        selector: `svg.qed-dot[${state}]`,
+        sample: state,
+        fg: fill,
+        bg: ground,
+        // Non-text: 3:1. Reported through the large-text threshold.
+        fontSize: 24,
+        fontWeight: 400,
+      });
+    }
+    return out;
+  });
+}
+
+/**
+ * Hover and active states, which the resting sweep cannot see. A link that
+ * turns unreadable on hover is still unreadable.
+ */
+export async function sweepHoverStates(
+  page: Page,
+  limit = 14,
+): Promise<SweptPair[]> {
+  const out: SweptPair[] = [];
+  // WCAG 1.4.3 exempts a disabled control, hovered or not.
+  const targets = await page
+    .locator("a:visible, button:visible:not(:disabled)")
+    .all();
+
+  for (const target of targets.slice(0, limit)) {
+    try {
+      await target.hover({ timeout: 1000 });
+    } catch {
+      continue;
+    }
+    const pair = await target.evaluate((el) => {
+      const OPAQUE = (value: string) =>
+        value !== "" &&
+        value !== "transparent" &&
+        !/rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*0\s*\)/.test(value);
+      const style = getComputedStyle(el);
+      let ground = OPAQUE(style.backgroundColor) ? style.backgroundColor : "";
+      let current: Element | null = el.parentElement;
+      while (ground === "" && current) {
+        const background = getComputedStyle(current).backgroundColor;
+        if (OPAQUE(background)) ground = background;
+        current = current.parentElement;
+      }
+      if (ground === "") ground = getComputedStyle(document.body).backgroundColor;
+      return {
+        selector: `${el.tagName.toLowerCase()}:hover`,
+        sample: el.textContent.trim().slice(0, 40),
+        fg: style.color,
+        bg: ground,
+        fontSize: parseFloat(style.fontSize),
+        fontWeight: Number(style.fontWeight) || 400,
+      };
+    });
+    if (pair.sample !== "") out.push(pair);
+  }
+
+  // Leave the pointer somewhere harmless so the next sweep is a resting one.
+  await page.mouse.move(0, 0);
+  return out;
+}
+
 export async function sweepContrast(page: Page): Promise<SweepResult> {
   return page.evaluate(() => {
     const OPAQUE = (value: string) =>

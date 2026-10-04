@@ -187,6 +187,36 @@ export function compareBitmaps(
   };
 }
 
+/**
+ * Crops to the bounding box of everything that differs from the corner pixel.
+ *
+ * Comparing two glyphs from (0,0) measures registration as much as shape: the
+ * three 9px dots sat at slightly different offsets, so a pair of identical
+ * discs a pixel apart would have read as "different shapes" and the gate that
+ * depended on it proved nothing.
+ */
+export function cropToInk(bitmap: Bitmap, tolerance = 12): Bitmap {
+  const ground = luma(bitmap, 0);
+  let minX = bitmap.width;
+  let maxX = -1;
+  let minY = bitmap.height;
+  let maxY = -1;
+
+  for (let y = 0; y < bitmap.height; y++) {
+    for (let x = 0; x < bitmap.width; x++) {
+      if (Math.abs(luma(bitmap, y * bitmap.width + x) - ground) <= tolerance) {
+        continue;
+      }
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < 0) return bitmap;
+  return cropToBitmap(bitmap, minX, minY, maxX - minX + 1, maxY - minY + 1);
+}
+
 export function cropToBitmap(
   bitmap: Bitmap,
   x0: number,

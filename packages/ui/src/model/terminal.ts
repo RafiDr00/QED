@@ -55,7 +55,15 @@ const TONE_BY_STATE = {
   ABSTAINED: "open",
 } as const satisfies Record<Verdict["state"], Tone>;
 
-const pad = (text: string, width: number) => text.padEnd(width, " ");
+/**
+ * Columns are separated by at least this much, always. `padEnd` alone does
+ * not: a value longer than its column comes back unpadded and runs straight
+ * into the next one, which shipped a path and a symbol fused together.
+ */
+const COLUMN_GAP = 2;
+
+const pad = (text: string, width: number) =>
+  text.padEnd(Math.max(width, text.length + COLUMN_GAP), " ");
 
 function evidenceFor(verdict: Verdict): string {
   switch (verdict.state) {
@@ -208,7 +216,12 @@ export function buildRunLines(
     { text: TOMBSTONE, tone: "proof", glyph: true },
   );
 
-  return lines;
+  // A run with nothing in it pushed a blank after the header and another
+  // before the summary, which reads as a gap where the rows should be.
+  return lines.filter(
+    (line, i) =>
+      line.segments.length > 0 || (lines[i - 1]?.segments.length ?? 1) > 0,
+  );
 }
 
 /** The plain-text form, with no colour at all. */

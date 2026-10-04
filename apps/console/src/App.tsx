@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { Label, Logo, ThemeToggle, type VerificationState } from "@qed/ui";
+import {
+  Label,
+  Logo,
+  ThemeToggle,
+  verifyRecord,
+  type AttestationRecord,
+  type VerificationState,
+} from "@qed/ui";
 
 import { ROUTES, titleOf, useRoute } from "./router.js";
 import { AttestationsView } from "./views/AttestationsView.js";
@@ -22,20 +29,16 @@ export function App() {
   >({});
 
   /**
-   * Re-derives the verdict from the record. The time reported is the time the
-   * check ran - not the record's own signing time, which is a different claim
-   * and the one thing this button must not restate.
+   * Really re-derives: recomputes the digest from the record's own signed
+   * fields and compares it with the one the record carries. The time reported
+   * is the time the check ran, not the record's signing time.
    */
-  const verify = (digest: string) => {
+  const verify = (record: AttestationRecord) => {
     const set = (state: VerificationState) => {
-      setVerification((current) => ({ ...current, [digest]: state }));
+      setVerification((current) => ({ ...current, [record.digest]: state }));
     };
     set({ status: "checking" });
-    window.setTimeout(() => {
-      const now = new Date();
-      const checkedAt = `${now.toISOString().slice(0, 16).replace("T", " ")} UTC`;
-      set({ status: "verified", checkedAt });
-    }, 400);
+    void verifyRecord(record, new Date()).then(set);
   };
 
   return (
@@ -47,8 +50,11 @@ export function App() {
       <header className="con-header">
         <div className="con-header-inner">
           <span className="con-brand">
-            <Logo variant="mark" size="sm" decorative />
-            <span className="t-heading">QED</span>
+            {/*
+              The wordmark is drawn, never set in a font: "Never re-set the
+              wordmark in a font" (components/Logotype/README.md).
+            */}
+            <Logo variant="lockup" size="sm" title="QED" />
             <span className="con-repo t-mono-sm">acme/ledger</span>
           </span>
           <div className="con-header-actions">

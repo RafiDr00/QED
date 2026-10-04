@@ -11,6 +11,8 @@ import {
   ThemeToggle,
   VerdictChip,
   VerdictTable,
+  reDeriveDigest,
+  verifyRecord,
   type AttestationRecord,
   type FunctionRun,
 } from "@qed/ui";
@@ -293,5 +295,45 @@ describe("ThemeToggle", () => {
     expect(
       screen.getByRole("button", { name: "Switch to Void theme (currently Paper)" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("verifyRecord", () => {
+  it("accepts a record whose digest matches its own fields", async () => {
+    const digest = await reDeriveDigest(RECORD);
+    const state = await verifyRecord({ ...RECORD, digest }, new Date(0));
+    expect(state.status).toBe("verified");
+  });
+
+  it("rejects a record whose digest does not", async () => {
+    const state = await verifyRecord(
+      { ...RECORD, digest: "sha256:0000" },
+      new Date(0),
+    );
+    expect(state.status).toBe("mismatch");
+  });
+
+  it("notices a field changed after signing", async () => {
+    const digest = await reDeriveDigest(RECORD);
+    const tampered = {
+      ...RECORD,
+      digest,
+      tolerances: ["float ε 1e-3"],
+    };
+    const state = await verifyRecord(tampered, new Date(0));
+    expect(state.status).toBe("mismatch");
+  });
+
+  it("reports the time the check ran, not the record's timestamp", async () => {
+    const digest = await reDeriveDigest(RECORD);
+    const state = await verifyRecord(
+      { ...RECORD, digest },
+      new Date("2030-01-02T03:04:00Z"),
+    );
+    expect(state).toEqual({
+      status: "verified",
+      checkedAt: "2030-01-02 03:04 UTC",
+    });
+    expect(RECORD.timestamp).not.toBe("2030-01-02 03:04 UTC");
   });
 });

@@ -35,7 +35,13 @@ export function Docs() {
               </div>
               {section.body.map((paragraph) =>
                 paragraph.startsWith("qed ") || paragraph.startsWith("curl ") ? (
-                  <pre key={paragraph} className="web-docs-code t-mono">
+                  <pre
+                    key={paragraph}
+                    className="web-docs-code t-mono"
+                    tabIndex={0}
+                    role="group"
+                    aria-label={`${section.title} command`}
+                  >
                     <code>{paragraph}</code>
                   </pre>
                 ) : (

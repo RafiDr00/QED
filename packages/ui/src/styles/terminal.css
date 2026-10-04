@@ -24,6 +24,19 @@
   background: var(--bg-raised);
 }
 
+/*
+ * And in print, whatever the document's theme attribute says. The page vars
+ * switch to Paper under @media print, but a component override keyed on
+ * [data-theme="paper"] cannot match a document that is not marked Paper - so
+ * without this the printed pane keeps bg-sunk and `proof` lands at 4.24:1 in
+ * the one medium Paper exists for.
+ */
+@media print {
+  .qed-pane {
+    background: var(--bg-raised);
+  }
+}
+
 .qed-pane-banner {
   display: flex;
   align-items: center;

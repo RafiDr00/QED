@@ -86,6 +86,11 @@
   outline-offset: var(--border-rule);
 }
 
+/* One ring, not two: the composite owns it while it holds focus. */
+.qed-focus-ring:focus-within :focus-visible {
+  outline: none;
+}
+
 .qed-table {
   border-collapse: collapse;
   width: 100%;

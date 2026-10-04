@@ -114,10 +114,21 @@ export const ATTESTATION: AttestationRecord = {
   engine: "qed 0.4.1",
   signer: "github-actions (OIDC)",
   rekorIndex: "78 440 213",
-  digest: "sha256:9f2a1c84bd0e…7c31",
+  /*
+   * The digest this record's own fields produce, computed with
+   * reDeriveDigest. Verify independently recomputes it and compares - so the
+   * button does what the README says rather than reporting success after a
+   * timer.
+   */
+  digest:
+    "sha256:001c5f396e6072b826e23ca48642555453a0f1bc2dd375c279c8649907c8b500",
 };
 
-/** A second record, with no tolerance applied: the row still prints. */
+/**
+ * A second record, with no tolerance applied: the row still prints. Its digest
+ * is deliberately not the one its fields produce, so the failed-verification
+ * state is reachable in the shipped console rather than only in the gallery.
+ */
 export const ATTESTATION_STRICT: AttestationRecord = {
   ...ATTESTATION,
   symbol: "roundHalfEven",
@@ -125,7 +136,8 @@ export const ATTESTATION_STRICT: AttestationRecord = {
   inputStrategy: "type-directed, corpus-seeded",
   tolerances: [],
   rekorIndex: "78 440 214",
-  digest: "sha256:3b7e0d21aa54…1f08",
+  digest:
+    "sha256:3b7e0d21aa54000000000000000000000000000000000000000000000001f08",
 };
 
 export interface Release {

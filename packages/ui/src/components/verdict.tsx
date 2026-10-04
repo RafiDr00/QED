@@ -39,6 +39,13 @@ const CROSS =
   "L7 1.101L7 5L10.899 5L10.899 7Z";
 const INNER = "M6 3A3 3 0 1 0 6 9A3 3 0 1 0 6 3Z";
 
+/**
+ * The disc spans 1..11 of a 12-unit box, so an untightened viewBox drew 7.5px
+ * of glyph for the 9px the design system specifies. Tightened to the shape,
+ * as the mark is.
+ */
+const DOT_VIEWBOX = "1 1 10 10";
+
 const GLYPH_PATH: Readonly<Record<VerdictState, string>> = {
   EQUIVALENT: DISC,
   DIVERGED: `${DISC}${CROSS}`,
@@ -59,7 +66,7 @@ export function VerdictDot({ state }: VerdictDotProps) {
     <svg
       className="qed-dot"
       data-state={state}
-      viewBox="0 0 12 12"
+      viewBox={DOT_VIEWBOX}
       aria-hidden="true"
       focusable="false"
     >

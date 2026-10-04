@@ -6,8 +6,13 @@ import { rawColor } from "@qed/tokens";
 import { expect, test, type Page } from "@playwright/test";
 
 import { contrast, parseColor, requiredRatio, round2 } from "../../scripts/color.ts";
-import { compareBitmaps, cropToBitmap, decodePng } from "../../scripts/png.ts";
-import { sweepContrast } from "./sweep.ts";
+import {
+  compareBitmaps,
+  cropToBitmap,
+  cropToInk,
+  decodePng,
+} from "../../scripts/png.ts";
+import { sweepContrast, sweepGlyphFills, sweepHoverStates } from "./sweep.ts";
 
 /**
  * The evidence run. It produces the files verify.ts reads for G1, G5, G6, G8
@@ -54,11 +59,14 @@ function comparePairwise(
   bitmaps: Map<string, ReturnType<typeof decodePng>>,
   tolerance: number,
 ): { a: string; b: string; ratio: number; dimensionsMatch: boolean }[] {
-  const all = [...bitmaps.values()];
+  // Register on the ink before cropping, so this measures shape rather than
+  // where in its box each glyph happened to land.
+  const inked = new Map([...bitmaps].map(([name, b]) => [name, cropToInk(b)]));
+  const all = [...inked.values()];
   const width = Math.min(...all.map((b) => b.width));
   const height = Math.min(...all.map((b) => b.height));
   const cropped = new Map(
-    [...bitmaps].map(([name, bitmap]) => [
+    [...inked].map(([name, bitmap]) => [
       name,
       cropToBitmap(bitmap, 0, 0, width, height),
     ]),
@@ -93,6 +101,10 @@ test.beforeAll(() => {
 test("contrast, a11y and screenshots across every route and both themes", async ({
   page,
 }) => {
+  // Sixteen route/theme combinations, each swept three ways, axe-scanned and
+  // photographed. This is the evidence run, not a unit test.
+  test.setTimeout(240_000);
+
   const pairs: unknown[] = [];
   const textColoursUsed: { theme: string; color: string; selector: string }[] = [];
   const axeRuns: unknown[] = [];
@@ -103,7 +115,12 @@ test("contrast, a11y and screenshots across every route and both themes", async 
       await open(page, route.url, theme);
 
       const swept = await sweepContrast(page);
-      for (const pair of swept.pairs) {
+      // The resting page, plus the two things it cannot see: the meaning-
+      // carrying SVG fills, and whatever a hover turns things into. The hover
+      // pass runs last, after the screenshots, because moving the pointer
+      // through a page is not a resting state to photograph.
+      const extra = [...(await sweepGlyphFills(page))];
+      for (const pair of [...swept.pairs, ...extra]) {
         const fg = parseColor(pair.fg);
         const bg = parseColor(pair.bg);
         if (!fg || !bg) continue;
@@ -154,6 +171,29 @@ test("contrast, a11y and screenshots across every route and both themes", async 
           shots.push({ name, theme, file: file.split("\\").join("/") });
         }
       }
+
+      // Now disturb the page: hover every link and button and read the
+      // colours each state produces.
+      for (const pair of await sweepHoverStates(page)) {
+        const fg = parseColor(pair.fg);
+        const bg = parseColor(pair.bg);
+        if (!fg || !bg) continue;
+        const ratio = contrast(fg, bg);
+        const required = requiredRatio(pair.fontSize, pair.fontWeight);
+        pairs.push({
+          route: route.name,
+          theme,
+          selector: pair.selector,
+          sample: pair.sample,
+          fg: pair.fg,
+          bg: pair.bg,
+          fontSize: pair.fontSize,
+          fontWeight: pair.fontWeight,
+          ratio: round2(ratio),
+          required,
+          ok: ratio >= required - 0.005,
+        });
+      }
     }
   }
 
@@ -193,6 +233,7 @@ test.describe("mark optics", () => {
       cutEdgeFraction: number;
       cutSideFraction: number;
       cornerIsSquare: boolean;
+      cornerRadiusFraction: number;
       inkFraction: number;
     }[] = [];
 
@@ -254,8 +295,14 @@ test.describe("mark optics", () => {
       }
 
       // The smoothed mark rounds its corners at 5.5% of the side; the small
-      // one squares them. Sample the corner pixel itself.
+      // one squares them. Sample the corner, and measure how far in the ink
+      // starts along the top edge - which is the radius, not just its presence.
       const cornerIsSquare = isInk(bitmap, minY * bitmap.width + minX);
+      let inset = 0;
+      for (let x = minX; x <= maxX; x++) {
+        if (isInk(bitmap, minY * bitmap.width + x)) break;
+        inset++;
+      }
 
       renders.push({
         size,
@@ -263,6 +310,7 @@ test.describe("mark optics", () => {
         cutEdgeFraction: halfWidth === 0 ? 0 : cut / halfWidth,
         cutSideFraction: boxWidth === 0 ? 0 : cutFromRight / boxWidth,
         cornerIsSquare,
+        cornerRadiusFraction: boxWidth === 0 ? 0 : inset / boxWidth,
         inkFraction: ink / (boxWidth * boxHeight),
       });
     }

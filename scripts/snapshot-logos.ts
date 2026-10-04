@@ -9,6 +9,8 @@ import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { geometryOf, pathDataOf } from "./logo-geometry.ts";
+
 const root = process.cwd();
 const logoDir = join(root, "packages/ui/src/assets/logos");
 
@@ -35,14 +37,18 @@ const ARTIFACT_SHA256: Record<string, string> = {
 
 const files: Record<
   string,
-  { artifactSha256: string; pathDataSha256: string; paths: string[] }
+  {
+    artifactSha256: string;
+    pathDataSha256: string;
+    geometrySha256: string;
+    paths: string[];
+    geometry: string[];
+  }
 > = {};
 
 for (const name of readdirSync(logoDir).filter((f) => f.endsWith(".svg")).sort()) {
   const bytes = readFileSync(join(logoDir, name));
-  const paths = [...bytes.toString("utf8").matchAll(/\sd="([^"]+)"/g)].map(
-    (m) => m[1] ?? "",
-  );
+  const paths = pathDataOf(bytes.toString("utf8"));
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   const expected = ARTIFACT_SHA256[name];
   if (expected === undefined) {
@@ -54,12 +60,18 @@ for (const name of readdirSync(logoDir).filter((f) => f.endsWith(".svg")).sort()
     );
   }
 
+  const geometry = geometryOf(bytes.toString("utf8"));
+
   files[name] = {
     artifactSha256: sha256,
     pathDataSha256: createHash("sha256")
       .update(paths.join("|"), "utf8")
       .digest("hex"),
+    geometrySha256: createHash("sha256")
+      .update(geometry.join("|"), "utf8")
+      .digest("hex"),
     paths,
+    geometry,
   };
 }
 

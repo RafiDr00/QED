@@ -7,7 +7,7 @@
  * comment.
  */
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.cwd();
@@ -66,6 +66,18 @@ function compile(file: string): Outcome {
   return { file, errors: messages.length, messages, infrastructure };
 }
 
+/**
+ * How many errors a negative test expects, declared in the file itself with
+ * `// @qed-expect-error <n>`. Recording a constant and never comparing it, as
+ * an earlier version did, made the gate assert only "something went wrong".
+ */
+function expectedErrorsIn(file: string): number {
+  const text = readFileSync(join(dir, file), "utf8");
+  const markers = [...text.matchAll(/@qed-expect-error(?:\s+(\d+))?/g)];
+  if (markers.length === 0) return 1;
+  return markers.reduce((n, m) => n + Number(m[1] ?? 1), 0);
+}
+
 function main(): void {
   const files = readdirSync(dir).filter((f) => f.endsWith(".tsx"));
   let broken = 0;
@@ -85,7 +97,11 @@ function main(): void {
     }
 
     if (file.endsWith(".invalid.tsx")) {
-      invalid.push({ file, expectedErrors: 1, actualErrors: outcome.errors });
+      invalid.push({
+        file,
+        expectedErrors: expectedErrorsIn(file),
+        actualErrors: outcome.errors,
+      });
       const code = /error (TS\d+)/.exec(outcome.messages[0] ?? "")?.[1] ?? "none";
       process.stdout.write(
         `${outcome.errors > 0 ? "rejected" : "ACCEPTED (bad)"}  ${file}  ${code}\n`,

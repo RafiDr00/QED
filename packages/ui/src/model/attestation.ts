@@ -36,3 +36,79 @@ export type VerificationState =
   | { readonly status: "verified"; readonly checkedAt: string }
   | { readonly status: "mismatch"; readonly detail: string }
   | { readonly status: "error"; readonly detail: string };
+
+/**
+ * The signed fields, in a fixed order. Everything the record asserts goes in;
+ * the digest itself does not, because it is what this produces.
+ */
+export function canonicalRecord(record: AttestationRecord): string {
+  const verdict =
+    record.verdict.state === "EQUIVALENT"
+      ? `EQUIVALENT:${record.verdict.inputs}`
+      : record.verdict.state === "DIVERGED"
+        ? `DIVERGED:${record.verdict.counterexample.repro}`
+        : `ABSTAINED:${record.verdict.obstruction}`;
+
+  return [
+    record.repository,
+    record.commit,
+    record.path,
+    record.symbol,
+    record.timestamp,
+    verdict,
+    record.inputStrategy,
+    record.controls.join("|"),
+    record.tolerances.join("|"),
+    record.engine,
+    record.signer,
+    record.rekorIndex,
+  ].join("\n");
+}
+
+/**
+ * Re-derives the record's digest from its own signed fields.
+ *
+ * "Verify is a real action. The button re-derives the verdict from the record
+ * and shows the result. An attestation nobody can check independently is
+ * decoration." (components/Attestation/README.md)
+ *
+ * This is the whole of that check that can run in a browser: it proves the
+ * record has not been altered since it was signed. Checking the signature
+ * against the CI provider's OIDC identity, and the inclusion proof against
+ * Rekor, needs the network the console deliberately does not have.
+ */
+export async function reDeriveDigest(
+  record: AttestationRecord,
+): Promise<string> {
+  const bytes = new TextEncoder().encode(canonicalRecord(record));
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  const hex = [...new Uint8Array(hash)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `sha256:${hex}`;
+}
+
+/** What the card should show, given what came back. */
+export async function verifyRecord(
+  record: AttestationRecord,
+  now: Date,
+): Promise<VerificationState> {
+  try {
+    const derived = await reDeriveDigest(record);
+    if (derived === record.digest) {
+      const checkedAt = `${now.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+      return { status: "verified", checkedAt };
+    }
+    return {
+      status: "mismatch",
+      detail:
+        `Re-derived ${derived.slice(0, 22)}… from the record's own fields, ` +
+        `but it carries ${record.digest.slice(0, 22)}…. Do not rely on it.`,
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      detail: `The check could not run: ${String(error)}`,
+    };
+  }
+}

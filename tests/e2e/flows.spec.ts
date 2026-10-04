@@ -168,3 +168,31 @@ test("the marketing site works with JavaScript turned off", async ({ browser }) 
   await expect(page.getByRole("table")).toBeVisible();
   await context.close();
 });
+
+test("the marketing site's theme toggle works, and survives a reload", async ({
+  page,
+}) => {
+  await page.goto(`${WEB}/`);
+  await expect(page.locator("html")).not.toHaveAttribute("data-theme", "paper");
+
+  // The only script on this page besides the bootstrap. It broke once by being
+  // attached to markup that did not exist yet, and nothing noticed.
+  await page.getByRole("button", { name: /switch to paper/i }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "paper");
+  await expect(
+    page.getByRole("button", { name: /switch to void/i }),
+  ).toBeVisible();
+
+  await page.reload();
+  expect(
+    await page.evaluate(() =>
+      document.documentElement.getAttribute("data-theme"),
+    ),
+  ).toBe("paper");
+
+  // And the docs page, which is rendered from the same template.
+  await page.goto(`${WEB}/docs/`);
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "paper");
+  await page.getByRole("button", { name: /switch to void/i }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "void");
+});

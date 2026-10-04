@@ -316,3 +316,53 @@ G2 rejects `px`, `rem` and `pt`. `em` and `ch` are relative to the type that is
 already set from a token, so they carry no independent design value — a measure
 of `66ch` is "however wide 66 characters of this font are", not a size someone
 chose. They stay allowed, and this is the reason.
+
+---
+
+## Added in round 3, after re-review
+
+### D-030 · The attestation's hairline is chosen per theme
+
+No hairline token clears 3:1 on `proof-dim` in either theme, so each takes the
+most visible one it has: `rule` in Void (3.69:1, against `rule-strong`'s
+2.61:1) and `ink-faint` in Paper (2.17:1, against `rule`'s 1.00:1 — invisible).
+Round 2 moved both to `rule-strong`, which made Void worse while citing
+visibility as the reason. The choice is now a custom property set per theme.
+
+### D-031 · Verification re-derives the digest, for real
+
+`verifyRecord` recomputes a SHA-256 over the record's own signed fields and
+compares it with the digest the record carries. Round 2 replaced a hard-coded
+timestamp with a 400ms timer that always succeeded — which is not what *"the
+button re-derives the verdict from the record"* means. One console fixture now
+carries a digest its fields do not produce, so the failed state is reachable in
+the product rather than only in the gallery.
+
+Checking the OIDC signature and the Rekor inclusion proof needs the network the
+console deliberately does not have; the card says what it checked.
+
+### D-032 · Columns are separated by at least two spaces, always
+
+`padEnd` does not truncate, so a value longer than its column came back
+unpadded and ran straight into the next one — shipping
+`periodic.tsreconcileOutstandingSettlementBatches` on the home page. `pad` now
+guarantees the gap, and a property test asserts it over arbitrary path and
+symbol lengths at widths from 40 to 160 columns, because the fixture-based test
+that preceded it could not see the bug.
+
+### D-033 · One implementation of the logo geometry
+
+`geometryOf` lived in both the baseline script and the gate. Both copies had the
+same mangled regex, so they agreed with each other while reading nothing — a
+check that passes for the wrong reason. There is now one implementation in
+`scripts/logo-geometry.ts`, and G4 demonstrably fails when a rect moves by one
+unit.
+
+### D-034 · `size` means the drawing for the mark, the box for the lockup
+
+For `variant="mark"` the viewBox is tightened to the shape, so `size` is the
+mark (D-025). For the wordmark and the lockup it is the full drawing including
+the clear space the files carry, because that is what those files are. The mark
+inside a lockup is therefore 0.42× the lockup's height — the system's own
+proportion — and the variant is derived from that drawn size, not from the
+lockup's.

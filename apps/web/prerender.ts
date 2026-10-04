@@ -64,13 +64,24 @@ function template(): string {
 
 function renderPage(page: Page, html: string): string {
   const body = renderToStaticMarkup(page.element);
+  // The toggle script goes immediately after the header, which only exists
+  // once the page body has been rendered in - the button ships labelled for
+  // Void, and a reader whose stored theme is Paper would otherwise read the
+  // wrong word until the whole document had parsed.
+  const withToggle = body.replace(
+    "</header>",
+    `</header><script>${TOGGLE_SCRIPT}</script>`,
+  );
+  if (!withToggle.includes(TOGGLE_SCRIPT)) {
+    throw new Error(`${page.out}: no </header> to attach the theme toggle to`);
+  }
   return html
     .replace(/<title>[^<]*<\/title>/, `<title>${page.title}</title>`)
     .replace(
       /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/,
       `<meta name="description" content="${page.description}" />`,
     )
-    .replace('<div id="root"></div>', body);
+    .replace('<div id="root"></div>', withToggle);
 }
 
 function main(): void {
@@ -101,7 +112,7 @@ function main(): void {
       "</head>",
       `  <script>${THEME_BOOTSTRAP}</script>\n  </head>`,
     )
-    .replace("</body>", `  <script>${TOGGLE_SCRIPT}</script>\n  </body>`);
+;
 
   for (const page of PAGES) {
     const target = join(dist, page.out);

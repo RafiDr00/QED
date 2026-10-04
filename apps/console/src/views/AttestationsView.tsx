@@ -1,17 +1,20 @@
-import { Attestation, type VerificationState } from "@qed/ui";
+import {
+  Attestation,
+  type AttestationRecord,
+  type VerificationState,
+} from "@qed/ui";
 
 import { ATTESTATION, ATTESTATION_STRICT } from "../fixtures.js";
 
 export interface AttestationsViewProps {
   verification: Record<string, VerificationState>;
-  onVerify: (digest: string) => void;
+  onVerify: (record: AttestationRecord) => void;
 }
 
 /**
- * The signed records. Verification is a real action: the button re-derives the
- * verdict from the record and the card reports what came back. The timestamp
- * is part of the record rather than read from a clock, so a re-run of the
- * screenshot produces the same pixels.
+ * The signed records. Verification is a real action: the button recomputes the
+ * record's digest from its own signed fields and compares it with the one the
+ * record carries, then the card reports what came back.
  */
 export function AttestationsView({
   verification,
@@ -25,7 +28,7 @@ export function AttestationsView({
           record={record}
           verification={verification[record.digest] ?? { status: "idle" }}
           onVerify={() => {
-            onVerify(record.digest);
+            onVerify(record);
           }}
         />
       ))}
