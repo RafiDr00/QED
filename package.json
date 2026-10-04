@@ -1,0 +1,37 @@
+{
+  "name": "qed",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@9.15.9",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build:tokens": "pnpm --filter @qed/tokens build",
+    "build": "pnpm --filter @qed/tokens build && pnpm --filter @qed/ui build && pnpm --filter @qed/cli-render build && pnpm --filter @qed/web build && pnpm --filter @qed/console build",
+    "typecheck": "tsc -b tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "e2e": "playwright test",
+    "verify": "tsx scripts/verify.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@playwright/test": "^1.49.1",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@testing-library/user-event": "^14.5.2",
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.17",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "axe-core": "^4.10.2",
+    "@axe-core/playwright": "^4.10.1",
+    "eslint": "^9.17.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "jsdom": "^25.0.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.1",
+    "vite": "^6.0.5",
+    "vitest": "^2.1.8"
+  }
+}

@@ -1,0 +1,75 @@
+<!-- @dsCard group="Product" height=300 subtitle="Three states, each with a glyph, a count and a reason" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Martian+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;padding:28px 32px;background:var(--bg);color:var(--ink);
+       font-family:var(--font-text);font-size:13px;line-height:20px}
+  .lbl{font-size:11px;line-height:14px;font-weight:600;letter-spacing:.09em;
+       color:var(--ink-muted);margin:0 0 16px}
+  .chips{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:28px}
+  .chip{display:inline-flex;align-items:center;gap:8px;padding:5px 10px 5px 8px;
+        border:1px solid var(--rule);border-radius:var(--radius-1);background:var(--bg-raised)}
+  .dot{width:9px;height:9px;border-radius:var(--radius-round);flex:none}
+  .dot.hollow{background:none;box-shadow:inset 0 0 0 1.5px var(--open)}
+  .word{font-family:var(--font-data);font-size:12px;line-height:16px;font-weight:600;letter-spacing:.08em}
+  .count{font-family:var(--font-data);font-size:11px;line-height:16px;color:var(--ink-muted)}
+  table{border-collapse:collapse;width:100%}
+  th{text-align:left;font-size:11px;font-weight:600;letter-spacing:.09em;color:var(--ink-muted);
+     padding:0 0 8px;border-bottom:1px solid var(--rule-strong)}
+  td{padding:11px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+  td.fn{font-family:var(--font-data);font-size:13px}
+  td.why{color:var(--ink-muted)}
+  .num{font-family:var(--font-data);font-size:28px;line-height:32px;font-weight:500;letter-spacing:-.02em}
+  .legend{color:var(--ink-muted);margin:22px 0 0;max-width:66ch}
+</style>
+</head>
+<body>
+
+<p class="lbl">THE THREE VERDICTS</p>
+
+<div class="chips">
+  <span class="chip">
+    <span class="dot" style="background:var(--proof)"></span>
+    <span class="word" style="color:var(--proof)">EQUIVALENT</span>
+    <span class="count">18,402 inputs</span>
+  </span>
+  <span class="chip">
+    <span class="dot" style="background:var(--break)"></span>
+    <span class="word" style="color:var(--break)">DIVERGED</span>
+    <span class="count">input 7 of 9,110</span>
+  </span>
+  <span class="chip">
+    <span class="dot hollow"></span>
+    <span class="word" style="color:var(--open)">ABSTAINED</span>
+    <span class="count">opens a database connection</span>
+  </span>
+</div>
+
+<table>
+  <tr><th style="width:30%">Function</th><th style="width:26%">Verdict</th><th>Evidence</th></tr>
+  <tr>
+    <td class="fn">billing/tax.go &rsaquo; computeVat</td>
+    <td><span class="dot" style="background:var(--proof);display:inline-block;margin-right:7px"></span><span class="word" style="color:var(--proof)">EQUIVALENT</span></td>
+    <td class="why"><span class="num">18,402</span> <span class="count">generated inputs, 0 divergences</span></td>
+  </tr>
+  <tr>
+    <td class="fn">orders/pricing.ts &rsaquo; bulkRate</td>
+    <td><span class="dot" style="background:var(--break);display:inline-block;margin-right:7px"></span><span class="word" style="color:var(--break)">DIVERGED</span></td>
+    <td class="why"><code style="font-family:var(--font-data)">{ qty: 100, tier: "gold" }</code> &rarr; base <strong>0.85</strong>, head <strong>0.8</strong></td>
+  </tr>
+  <tr>
+    <td class="fn">api/handlers.go &rsaquo; CreateOrder</td>
+    <td><span class="dot hollow" style="display:inline-block;margin-right:7px"></span><span class="word" style="color:var(--open)">ABSTAINED</span></td>
+    <td class="why">Opens a database connection &mdash; no sound harness in v0</td>
+  </tr>
+</table>
+
+<p class="legend">Colour never carries a verdict alone: each state owns a glyph (filled, cross-filled, hollow) so it survives colour-blindness and the black-and-white printout of an audit bundle. <strong>No verdict renders without its evidence</strong> &mdash; an input count, a counterexample, or the exact reason for abstaining. Abstain is a true neutral, not a warning colour &mdash; it is an answer, not a fault.</p>
+
+</body>
+</html>

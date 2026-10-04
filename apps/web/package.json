@@ -1,0 +1,17 @@
+{
+  "name": "@qed/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsx prerender.ts",
+    "preview": "vite preview --port 4311 --strictPort"
+  },
+  "dependencies": {
+    "@qed/tokens": "workspace:*",
+    "@qed/ui": "workspace:*",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

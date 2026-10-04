@@ -1,0 +1,59 @@
+<!-- @dsCard group="Product" height=340 subtitle="The screenshot the product travels on" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Martian+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;padding:30px 34px;background:var(--bg);color:var(--ink);
+       font-family:var(--font-text);font-size:13px;line-height:20px}
+  .pane{background:var(--bg-sunk);border:1px solid var(--rule);border-radius:var(--radius-2);
+        padding:20px 22px;max-width:690px}
+  .bar{display:flex;align-items:center;gap:9px;margin:0 0 16px}
+  .bar span{font-size:11px;font-weight:600;letter-spacing:.1em;color:var(--ink-muted)}
+  pre{font-family:var(--font-data);font-size:13px;line-height:21px;margin:0;
+      white-space:pre;overflow-x:auto;color:var(--ink)}
+  .m{color:var(--ink-muted)}
+  .g{color:var(--proof)}
+  .r{color:var(--break)}
+  .a{color:var(--open)}
+  .b{font-weight:600}
+  .note{color:var(--ink-muted);margin:18px 0 0;max-width:64ch}
+</style>
+</head>
+<body>
+
+<div class="pane">
+  <p class="bar">
+    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+      <path d="M4 4 H20 V13 L13 20 H4 Z" fill="var(--proof)"/>
+    </svg>
+    <span>QED &middot; DETERMINISTIC VERIFICATION</span>
+  </p>
+<pre><span class="m">$</span> qed check --base origin/main
+
+  <span class="m">41 functions changed &middot; 6 verifiable &middot; 2m 14s</span>
+
+  <span class="g b">&#9679; EQUIVALENT</span>   billing/tax.go      computeVat      <span class="m">18,402 inputs</span>
+  <span class="g b">&#9679; EQUIVALENT</span>   billing/tax.go      roundHalfEven    <span class="m">9,110 inputs</span>
+  <span class="g b">&#9679; EQUIVALENT</span>   orders/pricing.ts   applyDiscount   <span class="m">12,884 inputs</span>
+  <span class="r b">&#9679; DIVERGED</span>     orders/pricing.ts   bulkRate
+
+      <span class="m">input</span>   { qty: 100, tier: "gold" }
+      <span class="m">base</span>    0.85
+      <span class="m">head</span>    0.8
+      <span class="m">repro</span>   qed repro 9f2a1c
+
+  <span class="a b">&#9675; ABSTAINED</span>    api/handlers.go     CreateOrder     <span class="m">opens a database connection</span>
+  <span class="a b">&#9675; ABSTAINED</span>    api/handlers.go     webhookRetry    <span class="m">depends on wall-clock time</span>
+
+  <span class="m">1 divergence &middot; 2 abstained &middot; exit 1</span>  <span class="g">&#8718;</span>
+</pre>
+</div>
+
+<p class="note">The abstain lines are not padding &mdash; they are what earns the right to be believed on the green ones. Glyphs carry the state, so the run survives a terminal with colour off and a screenshot pasted into a black-and-white document.</p>
+
+</body>
+</html>

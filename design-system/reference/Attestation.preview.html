@@ -1,0 +1,69 @@
+<!-- @dsCard group="Product" height=360 subtitle="The signature component — identical on screen and in the filed PDF" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Martian+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;padding:28px 32px;background:var(--bg);color:var(--ink);
+       font-family:var(--font-text);font-size:13px;line-height:20px}
+  .att{background:var(--proof-dim);border:1px solid var(--rule);
+       border-left:2px solid var(--proof);border-radius:var(--radius-2);
+       padding:24px 26px;max-width:640px}
+  .eyebrow{display:flex;align-items:center;gap:9px;margin:0 0 14px}
+  .eyebrow span{font-size:11px;line-height:14px;font-weight:600;letter-spacing:.09em;color:var(--proof)}
+  h2{font-family:var(--font-display);font-weight:700;font-stretch:100%;letter-spacing:-.02em;font-size:28px;line-height:1.12;margin:0 0 4px}
+  .sub{font-family:var(--font-data);font-size:11px;line-height:17px;color:var(--ink-muted);margin:0 0 20px}
+  dl{display:grid;grid-template-columns:132px 1fr;gap:9px 20px;margin:0 0 20px}
+  dt{font-size:11px;line-height:17px;font-weight:600;letter-spacing:.09em;color:var(--ink-muted)}
+  dd{margin:0;font-family:var(--font-data);font-size:13px;line-height:17px}
+  .ok{color:var(--proof);font-weight:600;letter-spacing:.08em;font-size:12px}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:var(--radius-round);
+       background:var(--proof);margin-right:6px}
+  .foot{border-top:1px solid var(--rule);padding-top:14px;display:flex;
+        justify-content:space-between;align-items:flex-end;gap:20px}
+  .hash{font-family:var(--font-data);font-size:11px;line-height:17px;color:var(--ink-muted);
+        word-break:break-all;max-width:62%}
+  .btn{font-family:var(--font-text);font-size:13px;font-weight:600;color:var(--bg-raised);
+       background:var(--proof);border:0;border-radius:var(--radius-1);padding:8px 14px;cursor:pointer}
+  .note{color:var(--ink-muted);margin:18px 0 0;max-width:62ch}
+</style>
+</head>
+<body>
+
+<article class="att">
+  <p class="eyebrow">
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path d="M4 4 H20 V13 L13 20 H4 Z" fill="var(--proof)"/>
+    </svg>
+    <span>SIGNED ATTESTATION</span>
+  </p>
+
+  <h2>computeVat</h2>
+  <p class="sub">billing/tax.go &middot; acme/ledger @ 4f2c91a &middot; 2026&#8209;10&#8209;04 09:41 UTC</p>
+
+  <dl>
+    <dt>VERDICT</dt>
+    <dd><span class="dot"></span><span class="ok">EQUIVALENT</span></dd>
+    <dt>INPUTS</dt>
+    <dd>18,402 &mdash; type-directed, corpus-seeded, coverage-guided</dd>
+    <dt>CONTROLS</dt>
+    <dd>clock frozen &middot; rng seed 0x5f3a &middot; network denied &middot; overlay fs</dd>
+    <dt>TOLERANCES</dt>
+    <dd>float &epsilon; 1e&#8209;9 &mdash; applied, and recorded</dd>
+    <dt>ENGINE</dt>
+    <dd>qed 0.4.1 &middot; signer: github-actions (OIDC)</dd>
+  </dl>
+
+  <div class="foot">
+    <p class="hash">rekor #78 440 213 &middot; sha256:9f2a1c84bd0e&hellip;7c31</p>
+    <button class="btn" type="button">Verify independently</button>
+  </div>
+</article>
+
+<p class="note">The one place the brand asserts itself: a 2px <code>proof</code> rule down the left edge, <code>proof-dim</code> behind it. Every tolerance applied is printed, because a tolerance weakens the claim and the assessor has to see it.</p>
+
+</body>
+</html>

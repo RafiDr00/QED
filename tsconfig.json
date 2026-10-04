@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node", "vitest/globals"],
+    "paths": {
+      "@qed/tokens": ["./packages/tokens/dist/index.d.ts"],
+      "@qed/ui": ["./packages/ui/src/index.ts"],
+      "@qed/cli-render": ["./packages/cli-render/src/index.ts"]
+    },
+    "baseUrl": "."
+  },
+  "include": [
+    "packages/*/src/**/*",
+    "packages/*/*.ts",
+    "apps/*/src/**/*",
+    "apps/*/*.ts",
+    "scripts/**/*",
+    "tests/**/*"
+  ],
+  "exclude": ["**/dist/**", "**/node_modules/**"]
+}
