@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build:tokens": "pnpm --filter @qed/tokens build",
-    "build": "pnpm build:tokens && pnpm exec tsx scripts/generate-logos.ts && pnpm --filter @qed/web build && pnpm --filter @qed/console build",
+    "build": "pnpm build:tokens && pnpm exec tsx scripts/generate-logos.ts && pnpm exec tsx scripts/generate-run.ts && pnpm --filter @qed/web build && pnpm --filter @qed/console build",
     "typecheck": "tsc -b tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run",
@@ -17,7 +17,8 @@
     "build:logos": "tsx scripts/generate-logos.ts",
     "measure:fonts": "tsx scripts/measure-fonts.ts",
     "generate:social": "tsx scripts/generate-social.ts",
-    "qed": "tsx packages/cli/src/main.ts"
+    "qed": "tsx packages/cli/src/main.ts",
+    "generate:run": "tsx scripts/generate-run.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.1",

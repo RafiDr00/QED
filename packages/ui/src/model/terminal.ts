@@ -38,14 +38,7 @@ const INDENT = "  ";
 const EVIDENCE_INDENT = "      ";
 const GAP = "  ";
 
-/**
- * A terminal is 80 columns wide unless it says otherwise, and that is what
- * sizes the pane on screen too - so the verdict list, the part the design
- * system insists must not wrap, fits both.
- */
-export const DEFAULT_COLUMNS = 80;
-
-/** Columns are shrunk to fit, but never past the point of being readable. */
+/** A column never narrows past the point of being readable. */
 const PATH_COLUMN_MIN = 16;
 const SYMBOL_COLUMN_MIN = 16;
 
@@ -90,16 +83,7 @@ export function bannerSegments(): readonly Segment[] {
   ];
 }
 
-export interface LayoutOptions {
-  /** Terminal width in characters. */
-  readonly columns?: number;
-}
-
-export function buildRunLines(
-  result: RunResult,
-  options: LayoutOptions = {},
-): readonly RunLine[] {
-  const columns = options.columns ?? DEFAULT_COLUMNS;
+export function buildRunLines(result: RunResult): readonly RunLine[] {
   const lines: RunLine[] = [];
   const push = (...segments: Segment[]) => lines.push({ segments });
 
@@ -114,39 +98,36 @@ export function buildRunLines(
   push();
 
   // Three fixed columns, measured from the run itself; evidence ragged right.
-  //
-  // The columns are capped. Without a cap one 37-character symbol pushes the
-  // evidence column past the pane for every other row, and "a verdict list
-  // that wraps is a verdict list nobody reads" cuts both ways: the fix is not
-  // to let one outlier set the layout. A row that outgrows its column keeps
-  // its full name and puts its evidence on the next line, indented to the
-  // column it would have started in - so the alignment holds for the rest.
   const wordWidth =
     Math.max(0, ...result.runs.map((r) => r.verdict.state.length)) + 2;
-  const fixed = INDENT.length + 1 + (wordWidth + 1);
-  const widestEvidence = Math.max(
-    0,
-    ...result.runs.map((r) => evidenceFor(r.verdict).length),
-  );
 
-  let pathWidth = Math.max(0, ...result.runs.map((r) => r.path.length)) + 2;
-  let symbolWidth = Math.max(0, ...result.runs.map((r) => r.symbol.length)) + 2;
-
-  // Shrink to fit the terminal, taking it out of the symbol column first:
-  // a path locates the change, and a reader scanning a run needs that most.
-  let excess = fixed + pathWidth + symbolWidth + widestEvidence - columns;
-  if (excess > 0) {
-    const fromSymbol = Math.min(
-      excess,
-      Math.max(0, symbolWidth - SYMBOL_COLUMN_MIN),
+  // A column is as wide as the values that are actually in it, except for an
+  // outlier: one 37-character symbol among ten short ones should not set the
+  // layout for all of them. The ninetieth percentile keeps the common case
+  // inline and lets the outlier wrap its evidence onto its own line.
+  //
+  // Clamping to a fixed minimum instead made *every* row wrap as soon as one
+  // long path appeared, which is worse than a long line.
+  const percentile = (values: readonly number[], fraction: number): number => {
+    if (values.length === 0) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    const index = Math.min(
+      sorted.length - 1,
+      Math.floor(fraction * (sorted.length - 1)),
     );
-    symbolWidth -= fromSymbol;
-    excess -= fromSymbol;
-    const fromPath = Math.min(excess, Math.max(0, pathWidth - PATH_COLUMN_MIN));
-    pathWidth -= fromPath;
-  }
+    return sorted[index] ?? 0;
+  };
 
-  const evidenceColumn = fixed + pathWidth + symbolWidth;
+  const pathWidth =
+    Math.max(
+      PATH_COLUMN_MIN,
+      percentile(result.runs.map((r) => r.path.length), 0.9),
+    ) + 2;
+  const symbolWidth =
+    Math.max(
+      SYMBOL_COLUMN_MIN,
+      percentile(result.runs.map((r) => r.symbol.length), 0.9),
+    ) + 2;
 
   for (const run of result.runs) {
     const tone = TONE_BY_STATE[run.verdict.state];
@@ -178,7 +159,11 @@ export function buildRunLines(
     lines.push({ segments });
 
     if (evidence !== "" && overflows) {
-      push({ text: `${" ".repeat(evidenceColumn)}${evidence}`, tone: "muted" });
+      // Indented like a counterexample, not to the evidence column: that
+      // column is computed from the clamped widths, and this row is wider
+      // than them by definition - so aligning to it lines the text up under
+      // nothing.
+      push({ text: `${EVIDENCE_INDENT}${evidence}`, tone: "muted" });
     }
 
     if (run.verdict.state === "DIVERGED") {

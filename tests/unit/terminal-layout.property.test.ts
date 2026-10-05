@@ -28,7 +28,6 @@ const run = fc
     paths: fc.array(identifier(3, 60), { minLength: 1, maxLength: 6 }),
     symbols: fc.array(identifier(3, 60), { minLength: 1, maxLength: 6 }),
     inputs: fc.integer({ min: 0, max: 100000 }),
-    columns: fc.integer({ min: 40, max: 160 }),
   })
   .map((v) => {
     const n = Math.min(v.paths.length, v.symbols.length);
@@ -45,14 +44,14 @@ const run = fc
         verdict,
       })),
     };
-    return { result, columns: v.columns };
+    return result;
   });
 
 describe("terminal layout", () => {
-  it("never runs one column into the next, at any width", () => {
+  it("never runs one column into the next, whatever the names", () => {
     fc.assert(
-      fc.property(run, ({ result, columns }) => {
-        const text = runLinesToText(buildRunLines(result, { columns }));
+      fc.property(run, (result) => {
+        const text = runLinesToText(buildRunLines(result));
         for (const entry of result.runs) {
           const line = text
             .split("\n")
@@ -70,8 +69,8 @@ describe("terminal layout", () => {
 
   it("keeps the verdict word separated from the path", () => {
     fc.assert(
-      fc.property(run, ({ result, columns }) => {
-        const text = runLinesToText(buildRunLines(result, { columns }));
+      fc.property(run, (result) => {
+        const text = runLinesToText(buildRunLines(result));
         for (const line of text.split("\n")) {
           expect(line).not.toMatch(/EQUIVALENT\S/);
           expect(line).not.toMatch(/DIVERGED\S/);

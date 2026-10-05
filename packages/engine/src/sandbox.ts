@@ -45,6 +45,34 @@ function seededRandom(seed: number): () => number {
   };
 }
 
+/**
+ * `Math`, with only `random` replaced.
+ *
+ * Built by copying every own property rather than by spreading: `Math`'s
+ * methods are all non-enumerable, so `{ ...Math }` is an empty object and
+ * every `Math.round` inside the sandbox became "is not a function". Two
+ * versions that both failed that way compared equal, so tests of rounding
+ * passed while testing nothing at all.
+ */
+function seededMath(seed: number): typeof Math {
+  const replacement = Object.create(null) as Record<string, unknown>;
+  for (const key of Object.getOwnPropertyNames(Math)) {
+    // Read through the descriptor: taking `Math[key]` and binding it is the
+    // same thing, but detaching a method from its object first is a pattern
+    // worth not writing even when it happens to be safe here.
+    const descriptor = Object.getOwnPropertyDescriptor(Math, key);
+    if (!descriptor) continue;
+    const value: unknown = descriptor.value;
+    replacement[key] =
+      typeof value === "function"
+        ? (...args: unknown[]): unknown =>
+            (value as (...a: unknown[]) => unknown).apply(Math, args)
+        : value;
+  }
+  replacement["random"] = seededRandom(seed);
+  return Object.freeze(replacement) as unknown as typeof Math;
+}
+
 function frozenDate(epochMs: number): DateConstructor {
   const Real = Date;
   const Frozen = function (this: unknown, ...args: unknown[]) {
@@ -119,7 +147,7 @@ export function loadModule(
     exports: moduleShim.exports,
     require: denied("imports a module"),
     Date: frozenDate(controls.epochMs),
-    Math: Object.freeze({ ...Math, random: seededRandom(controls.rngSeed) }),
+    Math: seededMath(controls.rngSeed),
     fetch: denied("opens a network connection"),
     XMLHttpRequest: denied("opens a network connection"),
     WebSocket: denied("opens a network connection"),

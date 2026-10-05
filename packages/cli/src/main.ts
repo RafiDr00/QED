@@ -88,7 +88,10 @@ function gather(ref: string, cwd: string): ModulePair[] {
 function check(flags: Flags): number {
   const ref = flags.named.get("base") ?? "origin/main";
   const inputs = Number(flags.named.get("inputs") ?? 1000);
-  const color = !flags.switches.has("no-color") && process.stdout.isTTY !== false;
+  // Colour only on a terminal: piping into a file or a ticket should give
+  // plain text, which the design system says the output has to survive.
+  const color =
+    !flags.switches.has("no-color") && process.stdout.isTTY;
   const cwd = process.cwd();
 
   const started = Date.now();

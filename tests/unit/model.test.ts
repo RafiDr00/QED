@@ -150,11 +150,12 @@ describe("buildRunLines", () => {
     expect(longLine).toContain("reconcileOutstandingSettlementBatches");
     expect(longLine).not.toContain("18,402");
     expect(evidenceLines).toHaveLength(2);
+    expect(shortLine).toContain("18,402");
 
-    const inlineOffset = shortLine?.indexOf("18,402");
-    const wrappedOffset = evidenceLines
-      .find((l) => !l.includes("short"))
-      ?.indexOf("18,402");
-    expect(wrappedOffset).toBe(inlineOffset);
+    // Indented like a counterexample. Aligning it to the evidence column
+    // would line it up under nothing, because the row that wrapped is wider
+    // than that column by definition.
+    const wrapped = evidenceLines.find((l) => !l.includes("short"));
+    expect(wrapped).toMatch(/^ {6}\S/);
   });
 });

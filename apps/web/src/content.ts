@@ -1,4 +1,6 @@
-import type { FunctionRun, RunResult } from "@qed/ui";
+import { summarise, type FunctionRun, type RunResult } from "@qed/ui";
+
+import { GENERATED_RUN } from "./run.generated.js";
 
 /**
  * Every number on this site is a figure the product would produce. The voice
@@ -6,74 +8,17 @@ import type { FunctionRun, RunResult } from "@qed/ui";
  * abstain rate goes on the home page rather than in a footnote.
  */
 
-export const HERO_RUN: RunResult = {
-  command: "qed check --base origin/main",
-  changedFunctions: 41,
-  verifiableFunctions: 7,
-  duration: "2m 14s",
-  runs: [
-    {
-      path: "billing/tax.go",
-      symbol: "computeVat",
-      verdict: { state: "EQUIVALENT", inputs: 18402 },
-    },
-    {
-      path: "billing/tax.go",
-      symbol: "roundHalfEven",
-      verdict: { state: "EQUIVALENT", inputs: 9110 },
-    },
-    {
-      path: "orders/pricing.ts",
-      symbol: "applyDiscount",
-      verdict: { state: "EQUIVALENT", inputs: 12884 },
-    },
-    {
-      path: "orders/pricing.ts",
-      symbol: "bulkRate",
-      verdict: {
-        state: "DIVERGED",
-        counterexample: {
-          input: '{ qty: 100, tier: "gold" }',
-          base: "0.85",
-          head: "0.8",
-          repro: "qed repro 9f2a1c",
-          foundAt: { index: 7, of: 9110 },
-        },
-      },
-    },
-    {
-      path: "ledger/reconciliation.ts",
-      symbol: "reconcileSettlementBatches",
-      verdict: {
-        state: "DIVERGED",
-        counterexample: {
-          input:
-            '{ batches: 1, cutoff: "2026-09-30T23:59:59Z" }',
-          base: "19999",
-          head: "19998",
-          repro: "qed repro 4c81de",
-          foundAt: { index: 2143, of: 7500 },
-        },
-      },
-    },
-    {
-      path: "api/handlers.go",
-      symbol: "CreateOrder",
-      verdict: {
-        state: "ABSTAINED",
-        obstruction: "opens a database connection",
-      },
-    },
-    {
-      path: "api/handlers.go",
-      symbol: "webhookRetry",
-      verdict: {
-        state: "ABSTAINED",
-        obstruction: "depends on wall-clock time",
-      },
-    },
-  ],
-};
+/**
+ * The run shown on this page is a real one.
+ *
+ * `pnpm generate:run` executes the engine over examples/ledger and writes
+ * run.generated.ts. Nothing on this page is a number someone typed: the
+ * counts, the counterexample and the obstructions below all came out of
+ * running the code.
+ */
+export const HERO_RUN: RunResult = GENERATED_RUN;
+
+const SUMMARY = summarise(HERO_RUN);
 
 export const VERDICT_EXAMPLES: readonly FunctionRun[] = HERO_RUN.runs;
 
@@ -92,17 +37,17 @@ export const STEPS: readonly Step[] = [
   {
     n: "02",
     title: "It generates inputs",
-    body: "Type-directed, seeded from your own corpus, then guided by coverage. Both versions run on the same inputs under the same controls: clock frozen, seeded rng, network denied, overlay filesystem.",
+    body: "Type-directed: it reads the declared parameter types and generates from them, seeded with the constants mined out of both versions — because the boundary a change moved is usually written down in the code. Both versions then run on the same inputs under the same controls: clock frozen, rng seeded, network denied, imports refused.",
   },
   {
     n: "03",
     title: "It compares outputs",
-    body: "Return values, raised errors, and writes to anything the harness can observe. A single differing input ends the run for that function and is minimised before it is printed.",
+    body: "Return values and raised errors, compared structurally — object key order is not a difference, array order is, and every tolerance applied is recorded. A differing input is minimised before it is printed, so what you read is the smallest case that still disagrees.",
   },
   {
     n: "04",
-    title: "It signs what it found",
-    body: "The record carries the inputs, the controls, every tolerance applied and the CI provider's OIDC identity. It is logged to Rekor, and anyone can re-derive it without us.",
+    title: "It records what it found",
+    body: "The record carries the verdict, the input count, the controls and every tolerance applied, under a digest computed from those fields. Anyone holding the record can recompute that digest and check it has not been altered — without us, and without a network.",
   },
 ];
 
@@ -137,21 +82,30 @@ export interface Measure {
 }
 
 /** Published limits. The abstain rate is on the home page on purpose. */
+export const ABSTAIN_RATE = Math.round(
+  (SUMMARY.abstained / HERO_RUN.changedFunctions) * 100,
+);
+
+/**
+ * Published limits, computed from the run above rather than written down.
+ * "The abstain rate goes on the home page, not in a footnote: publishing the
+ * limit is what makes the claim believable."
+ */
 export const MEASURES: readonly Measure[] = [
   {
-    value: "29%",
+    value: `${ABSTAIN_RATE}%`,
     label: "ABSTAIN RATE",
-    note: "2 of the 7 verifiable functions in this run. The limit is published because publishing it is what makes the rest believable.",
+    note: `${SUMMARY.abstained} of the ${HERO_RUN.changedFunctions} functions in this run could not be verified. The limit is published because publishing it is what makes the rest believable.`,
   },
   {
-    value: "7",
-    label: "VERIFIABLE OF 41",
-    note: "the run above, on a service repository. The other 34 functions touch a database, a clock or a network socket.",
+    value: String(HERO_RUN.verifiableFunctions),
+    label: `VERIFIABLE OF ${HERO_RUN.changedFunctions}`,
+    note: "the run above. The rest read a clock, read a random number, or have no type annotation to generate inputs from.",
   },
   {
-    value: "2m 14s",
-    label: "MEDIAN RUN",
-    note: "on a 4-core runner, cold cache, for a pull request of that size.",
+    value: HERO_RUN.duration,
+    label: "THIS RUN",
+    note: "on one core, every function compared against its previous version on 2,000 generated inputs.",
   },
 ];
 
@@ -172,7 +126,7 @@ export const TIERS: readonly Tier[] = [
     summary: "The whole engine. Runs on your CI, signs to the public log.",
     includes: [
       "All three verdicts",
-      "Signed attestations, Rekor-logged",
+      "Records with a recomputable digest",
       "GitHub and GitLab CI",
       "Community support",
     ],
@@ -218,6 +172,7 @@ export const DOCS_NAV: readonly { id: string; title: string }[] = [
   { id: "controls", title: "Determinism controls" },
   { id: "tolerances", title: "Tolerances" },
   { id: "attestations", title: "Attestations" },
+  { id: "limits", title: "What is not built yet" },
   { id: "exit-codes", title: "Exit codes" },
 ];
 
@@ -242,7 +197,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     id: "controls",
     title: "Determinism controls",
     body: [
-      "Both versions run under the same controls, and the record names each one. The clock is frozen, the rng is seeded, the network is denied, and the filesystem is an overlay discarded after the run.",
+      "Both versions run under the same controls, and the record names each one. The clock is frozen, the rng is seeded, the network is denied, and a module import is refused rather than resolved — a function whose behaviour depends on another module cannot be compared in isolation unless that module is pinned too.",
       "A function that escapes a control is not run twice and averaged. It abstains, and the obstruction is printed.",
     ],
   },
@@ -258,9 +213,18 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     id: "attestations",
     title: "Attestations",
     body: [
-      "Each verified function produces a signed record: the verdict, the inputs, the controls, the tolerances, the engine version and the CI provider's OIDC identity.",
-      "The record says who could have produced it. It never says that QED vouched for itself.",
+      "Each verified function produces a record: the verdict, the inputs, the controls, the tolerances and the engine version, under a digest computed from exactly those fields.",
+      "Recomputing the digest proves the record has not been altered since it was written. It does not prove who wrote it — see the limits below.",
       "qed verify --digest sha256:9f2a1c84bd0e...7c31",
+    ],
+  },
+  {
+    id: "limits",
+    title: "What is not built yet",
+    body: [
+      "QED is honest about its own state as well as about your code. Today the engine verifies pure TypeScript and JavaScript functions in a self-contained module — the kind of code tax, pricing and ledger rules are written in.",
+      "Not yet built: signing against a CI provider's OIDC identity, logging to Rekor, resolving imports so a function that calls another module can be compared, async functions, and coverage-guided generation. Each of those is a reason the tool abstains today rather than a claim it quietly makes.",
+      "The abstain rate on the home page is measured from a real run, not estimated.",
     ],
   },
   {

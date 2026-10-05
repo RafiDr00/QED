@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { rawColor } from "@qed/tokens";
 import { summarise } from "@qed/ui/model";
 
-import { HERO_RUN } from "../../apps/web/src/content.ts";
+import { ABSTAIN_RATE, HERO_RUN } from "../../apps/web/src/content.ts";
 import { contrastHex, parseColor } from "../../scripts/color.ts";
 
 /** The flows that matter: finding the docs, reading a verdict, filing a record. */
@@ -135,11 +135,13 @@ test("a reader can get from the marketing page to the install command", async ({
   // The abstain rate is on the home page, not in a footnote - and it is the
   // rate of the run printed above it, not a number from somewhere else.
   await expect(page.getByText("ABSTAIN RATE", { exact: true })).toBeVisible();
+  // One definition of the rate, exported by the page's own content module,
+  // so the figure on the page and the figure asserted here cannot diverge.
   const summary = summarise(HERO_RUN);
-  const rate = Math.round(
-    (summary.abstained / HERO_RUN.verifiableFunctions) * 100,
+  expect(ABSTAIN_RATE).toBe(
+    Math.round((summary.abstained / HERO_RUN.changedFunctions) * 100),
   );
-  await expect(page.getByText(`${rate}%`).first()).toBeVisible();
+  await expect(page.getByText(`${ABSTAIN_RATE}%`).first()).toBeVisible();
   await expect(
     page.getByText(String(HERO_RUN.verifiableFunctions), { exact: true }).first(),
   ).toBeVisible();

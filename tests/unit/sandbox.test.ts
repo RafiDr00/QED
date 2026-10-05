@@ -108,3 +108,45 @@ describe("isolation", () => {
     expect(callFunction(g, "f", [])).toEqual({ kind: "returned", value: "undefined" });
   });
 });
+
+describe("the globals the sandbox provides are complete", () => {
+  // Math's methods are non-enumerable, so building the replacement with a
+  // spread silently produced an empty object. Every one of these was "not a
+  // function" inside the sandbox, and two versions that both failed that way
+  // compared equal - so a test of rounding passed while proving nothing.
+  const mathMethods = ["round", "floor", "ceil", "abs", "max", "min", "trunc", "sign", "pow", "sqrt"];
+
+  for (const method of mathMethods) {
+    it(`Math.${method} works`, () => {
+      const s = load(`export function f(a: number, b: number): unknown { return Math.${method}(a, b); }`);
+      const out = callFunction(s, "f", [2.5, 2]);
+      expect(out.kind, `Math.${method} threw: ${JSON.stringify(out.value)}`).toBe("returned");
+      expect(typeof out.value).toBe("number");
+    });
+  }
+
+  it("keeps Math's constants", () => {
+    const s = load(`export function f(): number { return Math.PI; }`);
+    expect(callFunction(s, "f", [])).toEqual({ kind: "returned", value: Math.PI });
+  });
+
+  it("still seeds random", () => {
+    const s = load(`export function f(): number { return Math.random(); }`);
+    const v = callFunction(s, "f", []).value as number;
+    expect(v).toBeGreaterThanOrEqual(0);
+    expect(v).toBeLessThan(1);
+  });
+
+  it("JSON is available, since serialisers are the point", () => {
+    const s = load(`export function f(o: object): string { return JSON.stringify(o); }`);
+    expect(callFunction(s, "f", [{ a: 1 }])).toEqual({ kind: "returned", value: '{"a":1}' });
+  });
+
+  it("Object, Array and String statics are available", () => {
+    const s = load(`export function f(): unknown { return [Object.keys({a:1}), Array.isArray([]), String(1), Number("2"), parseInt("3", 10)]; }`);
+    expect(callFunction(s, "f", [])).toEqual({
+      kind: "returned",
+      value: [["a"], true, "1", 2, 3],
+    });
+  });
+});

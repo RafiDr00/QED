@@ -366,3 +366,50 @@ the clear space the files carry, because that is what those files are. The mark
 inside a lockup is therefore 0.42× the lockup's height — the system's own
 proportion — and the variant is derived from that drawn size, not from the
 lockup's.
+
+---
+
+## The engine
+
+### D-035 · Purity is decided by running the function, not by reading it
+
+A source scan would guess: a file that mentions `Date.now()` might never reach
+that line. The probe runs the function twice in one module instance, then again
+under a different clock and a different seed, and reports what moved. "Depends
+on wall-clock time" is an observation.
+
+The two ambients differ by an awkward number of milliseconds on purpose. An
+offset of whole days is a multiple of 1000, so `Date.now() % 1000` returns the
+same answer under both and looks pure.
+
+### D-036 · Inputs are seeded with the constants in the code
+
+Random draws almost never land on a boundary: `qty > 100` becoming
+`qty >= 100` disagrees for exactly one input, and a thousand random draws will
+not find it. The literals in both versions are mined, together with their
+neighbours, and the notable values for each type are run *first*, before any
+random draw - so finding an edge does not depend on the seed.
+
+### D-037 · Strictness, deliberately
+
+`+0` and `-0` are different, because `1/0` and `1/-0` are. NaN agrees with NaN,
+because two versions that both cannot compute a number agree. Object key order
+is not a difference; array order is. Every departure from exact equality - a
+float epsilon, comparing a Set by membership - is recorded and printed, because
+an unrecorded tolerance is what makes a document persuasive and worthless.
+
+### D-038 · The engine covers one slice, and the rest abstains
+
+Pure TypeScript and JavaScript functions in a self-contained module. Imports are
+refused rather than resolved, because a function whose behaviour depends on
+another module cannot be compared in isolation unless that module is pinned too.
+Async functions, coverage-guided generation, OIDC signing and Rekor logging are
+not built; each is a reason the tool abstains today rather than a claim it
+quietly makes. The marketing copy says so, in a section of its own.
+
+### D-039 · The published numbers come from a real run
+
+`pnpm generate:run` executes the engine over `examples/ledger` and writes
+`run.generated.ts`, which both apps display. The abstain rate on the home page
+is computed from that run rather than written down - it is 43%, where the
+hand-written fixture claimed 29%.

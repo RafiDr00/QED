@@ -1,5 +1,7 @@
 import type { AttestationRecord, FunctionRun, RunResult } from "@qed/ui";
 
+import { GENERATED_RUN } from "./run.generated.js";
+
 /**
  * Typed fixtures. The console never talks to a network: every figure here is
  * shaped exactly as the engine would emit it, so the shell can be built and
@@ -10,78 +12,11 @@ import type { AttestationRecord, FunctionRun, RunResult } from "@qed/ui";
  * high abstain rate, and a run with nothing verifiable in it.
  */
 
-export const CURRENT_RUN: RunResult = {
-  command: "qed check --base origin/main",
-  changedFunctions: 41,
-  verifiableFunctions: 7,
-  duration: "2m 14s",
-  runs: [
-    {
-      path: "billing/tax.go",
-      symbol: "computeVat",
-      verdict: {
-        state: "EQUIVALENT",
-        inputs: 18402,
-        strategy: "type-directed, corpus-seeded, coverage-guided",
-      },
-    },
-    {
-      path: "billing/tax.go",
-      symbol: "roundHalfEven",
-      verdict: { state: "EQUIVALENT", inputs: 9110 },
-    },
-    {
-      path: "orders/pricing.ts",
-      symbol: "applyDiscount",
-      verdict: { state: "EQUIVALENT", inputs: 12884 },
-    },
-    {
-      path: "orders/pricing.ts",
-      symbol: "bulkRate",
-      verdict: {
-        state: "DIVERGED",
-        counterexample: {
-          input: '{ qty: 100, tier: "gold" }',
-          base: "0.85",
-          head: "0.8",
-          repro: "qed repro 9f2a1c",
-          foundAt: { index: 7, of: 9110 },
-        },
-      },
-    },
-    {
-      path: "ledger/reconciliation.ts",
-      symbol: "reconcileSettlementBatches",
-      verdict: {
-        state: "DIVERGED",
-        counterexample: {
-          input:
-            '{ batches: 1, cutoff: "2026-09-30T23:59:59Z" }',
-          base: "19999",
-          head: "19998",
-          repro: "qed repro 4c81de",
-          foundAt: { index: 2143, of: 7500 },
-        },
-      },
-    },
-    {
-      path: "api/handlers.go",
-      symbol: "CreateOrder",
-      verdict: {
-        state: "ABSTAINED",
-        obstruction: "opens a database connection",
-      },
-    },
-    {
-      path: "api/handlers.go",
-      symbol: "webhookRetry",
-      verdict: {
-        state: "ABSTAINED",
-        obstruction: "depends on wall-clock time",
-      },
-    },
-  ],
-};
+/**
+ * The run this console displays is a real one: `pnpm generate:run` executes
+ * the engine over examples/ledger and writes run.generated.ts.
+ */
+export const CURRENT_RUN: RunResult = GENERATED_RUN;
 
 /** A run where nothing could be verified. The empty state is a real state. */
 export const EMPTY_RUN: RunResult = {
