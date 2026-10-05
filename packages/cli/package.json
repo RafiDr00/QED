@@ -1,0 +1,14 @@
+{
+  "name": "@qed/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": { "qed": "./src/main.ts" },
+  "main": "./src/main.ts",
+  "exports": { ".": "./src/main.ts" },
+  "dependencies": {
+    "@qed/cli-render": "workspace:*",
+    "@qed/engine": "workspace:*",
+    "@qed/ui": "workspace:*"
+  }
+}

@@ -16,12 +16,14 @@
     "verify": "tsx scripts/verify.ts",
     "build:logos": "tsx scripts/generate-logos.ts",
     "measure:fonts": "tsx scripts/measure-fonts.ts",
-    "generate:social": "tsx scripts/generate-social.ts"
+    "generate:social": "tsx scripts/generate-social.ts",
+    "qed": "tsx packages/cli/src/main.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.1",
     "@eslint/js": "^9.17.0",
     "@playwright/test": "^1.49.1",
+    "@qed/cli": "workspace:*",
     "@qed/cli-render": "workspace:*",
     "@qed/engine": "workspace:*",
     "@qed/tokens": "workspace:*",
