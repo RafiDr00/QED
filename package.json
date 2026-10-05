@@ -23,6 +23,7 @@
     "@eslint/js": "^9.17.0",
     "@playwright/test": "^1.49.1",
     "@qed/cli-render": "workspace:*",
+    "@qed/engine": "workspace:*",
     "@qed/tokens": "workspace:*",
     "@qed/ui": "workspace:*",
     "@testing-library/jest-dom": "^6.6.3",

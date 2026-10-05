@@ -1,0 +1,14 @@
+{
+  "name": "@qed/engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@qed/ui": "workspace:*",
+    "fast-check": "^3.23.2",
+    "typescript": "^5.7.2"
+  }
+}

@@ -20,6 +20,9 @@ importers:
       '@qed/cli-render':
         specifier: workspace:*
         version: link:packages/cli-render
+      '@qed/engine':
+        specifier: workspace:*
+        version: link:packages/engine
       '@qed/tokens':
         specifier: workspace:*
         version: link:packages/tokens
@@ -128,6 +131,18 @@ importers:
       '@qed/ui':
         specifier: workspace:*
         version: link:../ui
+
+  packages/engine:
+    dependencies:
+      '@qed/ui':
+        specifier: workspace:*
+        version: link:../ui
+      fast-check:
+        specifier: ^3.23.2
+        version: 3.23.2
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
 
   packages/tokens: {}
 

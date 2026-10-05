@@ -12,6 +12,8 @@ export default tseslint.config(
       "**/test-results/**",
       "**/.verify/**",
       "design-system/**",
+      // Sample code the engine reads as data, not code this repo compiles.
+      "examples/**",
       // Deliberately uncompilable: scripts/type-tests.ts is their runner.
       "packages/ui/type-tests/**",
       "packages/tokens/dist/**",
