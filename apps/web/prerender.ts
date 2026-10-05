@@ -14,10 +14,12 @@ import { fileURLToPath } from "node:url";
 
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { rawColor } from "@qed/tokens";
 import { THEME_BOOTSTRAP } from "@qed/ui";
 
 import { Docs } from "./src/Docs.js";
 import { Home } from "./src/Home.js";
+import { NotFound } from "./src/NotFound.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const dist = join(here, "dist");
@@ -27,14 +29,25 @@ const TOGGLE_SCRIPT = `(function(){var b=document.getElementById("qed-theme-togg
 
 interface Page {
   readonly out: string;
+  /** Path below the site root, for canonical URLs and the sitemap. */
+  readonly path: string;
   readonly title: string;
   readonly description: string;
   readonly element: ReactElement;
 }
 
+/** Where the site is served from. "/" unless the host puts it on a path. */
+const BASE = process.env["QED_BASE"] ?? "/";
+/** The origin the canonical URLs and the sitemap point at. */
+const SITE = (process.env["QED_SITE_URL"] ?? "https://qed.dev").replace(/\/$/, "");
+
+const absolute = (path: string) =>
+  `${SITE}${`${BASE}${path}`.replace(/\/{2,}/g, "/")}`;
+
 const PAGES: Page[] = [
   {
     out: "index.html",
+    path: "",
     title: "QED - Proven, or it says so",
     description:
       "QED runs the function you changed against the one it replaces and reports one of three verdicts, with the evidence attached.",
@@ -42,12 +55,23 @@ const PAGES: Page[] = [
   },
   {
     out: "docs/index.html",
+    path: "docs/",
     title: "QED - Documentation",
     description:
       "Install QED, run it against a base branch, and read what it signs.",
     element: createElement(Docs),
   },
+  {
+    out: "404.html",
+    path: "404.html",
+    title: "QED - Not found",
+    description: "That page does not exist.",
+    element: createElement(NotFound),
+  },
 ];
+
+/** The 404 is served, not crawled. */
+const SITEMAP_PAGES = PAGES.filter((page) => page.out !== "404.html");
 
 function build(): void {
   const result = spawnSync("pnpm", ["exec", "vite", "build"], {
@@ -60,6 +84,35 @@ function build(): void {
 
 function template(): string {
   return readFileSync(join(dist, "index.html"), "utf8");
+}
+
+/**
+ * What a link to this page shows when it is pasted somewhere. A marketing page
+ * without these is a bare URL in every chat window it travels through.
+ */
+function metaFor(page: Page): string {
+  const url = absolute(page.path);
+  const image = absolute("og.png");
+  return [
+    `  <link rel="canonical" href="${url}" />`,
+    `  <meta property="og:type" content="website" />`,
+    `  <meta property="og:site_name" content="QED" />`,
+    `  <meta property="og:url" content="${url}" />`,
+    `  <meta property="og:title" content="${page.title}" />`,
+    `  <meta property="og:description" content="${page.description}" />`,
+    `  <meta property="og:image" content="${image}" />`,
+    `  <meta property="og:image:width" content="1200" />`,
+    `  <meta property="og:image:height" content="630" />`,
+    `  <meta property="og:image:alt" content="A QED run: three verdicts with their evidence." />`,
+    `  <meta name="twitter:card" content="summary_large_image" />`,
+    `  <meta name="twitter:title" content="${page.title}" />`,
+    `  <meta name="twitter:description" content="${page.description}" />`,
+    `  <meta name="twitter:image" content="${image}" />`,
+    `  <meta name="theme-color" content="${rawColor["bg"]?.["void"] ?? ""}" media="(prefers-color-scheme: dark)" />`,
+    `  <meta name="theme-color" content="${rawColor["bg"]?.["paper"] ?? ""}" media="(prefers-color-scheme: light)" />`,
+    `  <link rel="apple-touch-icon" href="${BASE}apple-touch-icon.png" />`,
+    `  <link rel="icon" href="${BASE}favicon-32.png" sizes="32x32" type="image/png" />`,
+  ].join("\n");
 }
 
 function renderPage(page: Page, html: string): string {
@@ -79,7 +132,8 @@ function renderPage(page: Page, html: string): string {
     .replace(/<title>[^<]*<\/title>/, `<title>${page.title}</title>`)
     .replace(
       /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/,
-      `<meta name="description" content="${page.description}" />`,
+      `<meta name="description" content="${page.description}" />
+${metaFor(page)}`,
     )
     .replace('<div id="root"></div>', withToggle);
 }
@@ -95,13 +149,14 @@ function main(): void {
     .map((m) => m[1])
     .filter((src): src is string => src !== undefined);
 
-  // Preload the two faces the first screen actually uses. latin-ext loads on
-  // demand; preloading it would cost 27KB nobody reads.
+  // Preload the two faces the first screen actually uses. The pattern excludes
+  // latin-ext, whose hashed name has a second "-" segment: preloading it costs
+  // 27KB on a screen that never asks for those glyphs.
   const preloads = readdirSync(join(dist, "assets"))
-    .filter((f) => /-latin-[^.]*\.woff2$/.test(f))
+    .filter((f) => /-latin-[A-Za-z0-9_]+\.woff2$/.test(f))
     .map(
       (f) =>
-        `  <link rel="preload" as="font" type="font/woff2" href="/assets/${f}" crossorigin />`,
+        `  <link rel="preload" as="font" type="font/woff2" href="${BASE}assets/${f}" crossorigin />`,
     )
     .join("\n");
 
@@ -125,6 +180,31 @@ function main(): void {
     rmSync(file, { force: true });
     rmSync(`${file}.map`, { force: true });
   }
+
+  // robots.txt and a sitemap: a static site that wants to be found needs both,
+  // and they have to know the base and the origin like everything else.
+  writeFileSync(
+    join(dist, "robots.txt"),
+    `User-agent: *
+Allow: /
+
+Sitemap: ${absolute("sitemap.xml")}
+`,
+    "utf8",
+  );
+  writeFileSync(
+    join(dist, "sitemap.xml"),
+    [
+      `<?xml version="1.0" encoding="UTF-8"?>`,
+      `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`,
+      ...SITEMAP_PAGES.map(
+        (page) => `  <url><loc>${absolute(page.path)}</loc></url>`,
+      ),
+      `</urlset>`,
+      ``,
+    ].join("\n"),
+    "utf8",
+  );
 
   const assets = join(dist, "assets");
   const listed = readdirSync(assets);

@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { Logo } from "@qed/ui";
 
+import { href } from "./base.js";
+
 /**
  * The marketing shell. It ships as static HTML: the only script on the page is
  * the theme bootstrap, so first paint needs nothing and cannot flash.
@@ -13,10 +15,10 @@ export interface LayoutProps {
 }
 
 const NAV = [
-  { href: "/#how", label: "How it works" },
-  { href: "/#verdicts", label: "Verdicts" },
-  { href: "/#pricing", label: "Pricing" },
-  { href: "/docs/", label: "Docs" },
+  { href: href("#how"), label: "How it works" },
+  { href: href("#verdicts"), label: "Verdicts" },
+  { href: href("#pricing"), label: "Pricing" },
+  { href: href("docs/"), label: "Docs" },
 ] as const;
 
 export function Layout({ children, current = "home" }: LayoutProps) {
@@ -27,7 +29,7 @@ export function Layout({ children, current = "home" }: LayoutProps) {
       </a>
       <header className="web-header">
         <div className="qed-page web-header-inner">
-          <a className="web-home-link" href="/" aria-label="QED, home">
+          <a className="web-home-link" href={href("")} aria-label="QED, home">
             <Logo variant="lockup" size="sm" decorative />
           </a>
           <nav aria-label="Primary">
@@ -37,7 +39,7 @@ export function Layout({ children, current = "home" }: LayoutProps) {
                   <a
                     className="web-nav-link"
                     href={item.href}
-                    {...(current === "docs" && item.href === "/docs/"
+                    {...(current === "docs" && item.href === href("docs/")
                       ? { "aria-current": "page" }
                       : {})}
                   >
@@ -58,7 +60,7 @@ export function Layout({ children, current = "home" }: LayoutProps) {
             >
               Paper
             </button>
-            <a className="qed-button web-cta" data-variant="primary" href="/docs/#install">
+            <a className="qed-button web-cta" data-variant="primary" href={href("docs/#install")}>
               Install
             </a>
           </div>

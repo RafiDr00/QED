@@ -38,6 +38,7 @@ type Theme = (typeof THEMES)[number];
 const ROUTES = [
   { name: "web-home", url: `${WEB}/` },
   { name: "web-docs", url: `${WEB}/docs/` },
+  { name: "web-404", url: `${WEB}/404.html` },
   { name: "console-run", url: `${CONSOLE}/#/run` },
   { name: "console-verdicts", url: `${CONSOLE}/#/verdicts` },
   { name: "console-attestations", url: `${CONSOLE}/#/attestations` },

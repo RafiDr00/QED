@@ -1,0 +1,81 @@
+name: deploy
+
+# Builds both surfaces as static files and publishes them to GitHub Pages:
+# the marketing site at the root, the console demo under /console/.
+#
+# It will not publish until Pages is enabled for the repository
+# (Settings -> Pages -> Source: GitHub Actions). That switch is deliberately
+# left to a person: this is the step that puts the site in front of the world.
+#
+# Serving it somewhere else instead: `pnpm build` produces apps/web/dist and
+# apps/console/dist, both plain static directories. Set QED_BASE and
+# QED_SITE_URL so the canonical URLs, the sitemap and the asset paths match
+# where it will actually live.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # A project site lives at /<repo>/, so every emitted URL needs the prefix.
+      QED_BASE: /QED/
+      QED_CONSOLE_BASE: /QED/console/
+      QED_SITE_URL: https://rafidr00.github.io
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Assemble the site
+        run: |
+          mkdir -p site
+          cp -r apps/web/dist/. site/
+          mkdir -p site/console
+          cp -r apps/console/dist/. site/console/
+          # Pages serves 404.html for unknown paths; the console is a hash
+          # router, so it needs nothing else.
+          test -f site/index.html
+          test -f site/404.html
+          test -f site/console/index.html
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

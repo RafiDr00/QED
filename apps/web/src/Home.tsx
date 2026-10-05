@@ -8,6 +8,7 @@ import {
 } from "@qed/ui";
 
 import { Layout } from "./Layout.js";
+import { href } from "./base.js";
 import {
   HERO_RUN,
   MEASURES,
@@ -147,7 +148,7 @@ export function Home() {
                   <a
                     className="qed-button web-tier-cta"
                     data-variant={tier.primary === true ? "primary" : "secondary"}
-                    href="/docs/#install"
+                    href={href("docs/#install")}
                   >
                     {tier.price === "Talk to us" ? "Contact sales" : "Start"}
                   </a>

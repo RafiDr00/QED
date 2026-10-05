@@ -93,6 +93,34 @@ Accept a deliberate change locally with `pnpm e2e --update-snapshots`, then
 regenerate the Linux pair by dispatching the `baselines` workflow and copying
 its artifact over `tests/e2e/visual.spec.ts-snapshots/`.
 
+## Deploying
+
+`pnpm build` produces two plain static directories — `apps/web/dist` (the
+marketing site, HTML + CSS + woff2 and about 1.3KB of inline script) and
+`apps/console/dist` (the console demo, a hash-routed SPA). Neither needs a
+server, a rewrite rule or a runtime.
+
+Three environment variables tell the build where it will live, so the asset
+paths, the in-page links, the canonical URLs and the sitemap all agree:
+
+| | |
+| --- | --- |
+| `QED_BASE` | path the marketing site is served from. Default `/`. |
+| `QED_CONSOLE_BASE` | path the console is served from. Default `/`. |
+| `QED_SITE_URL` | origin for canonical URLs, `og:image` and the sitemap. Default `https://qed.dev`. |
+
+`.github/workflows/deploy.yml` publishes both to GitHub Pages — the site at
+the root, the console under `/console/`. **It cannot publish until Pages is
+enabled** in Settings → Pages → Source: GitHub Actions. That switch is left to
+a person on purpose: it is the step that puts the site in front of the world.
+
+For a domain of its own, drop the `QED_BASE` variables and set
+`QED_SITE_URL=https://qed.dev`.
+
+`pnpm generate:social` regenerates `og.png`, `favicon-32.png` and
+`apple-touch-icon.png` from the design system's own logo files and palette —
+run it after a change to either.
+
 ## Working on it
 
 Design values come from `@qed/tokens` and nowhere else. If you need a value the

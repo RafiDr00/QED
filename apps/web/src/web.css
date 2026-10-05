@@ -233,3 +233,10 @@ a.qed-button[data-variant="primary"] {
     margin-left: 0;
   }
 }
+
+.web-404-actions {
+  margin-top: var(--space-8);
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
