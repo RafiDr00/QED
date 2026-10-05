@@ -109,16 +109,11 @@ paths, the in-page links, the canonical URLs and the sitemap all agree:
 | `QED_CONSOLE_BASE` | path the console is served from. Default `/`. |
 | `QED_SITE_URL` | origin for canonical URLs, `og:image` and the sitemap. Default `https://qed.dev`. |
 
-`.github/workflows/deploy.yml` publishes both to GitHub Pages — the site at
-the root, the console under `/console/`. It is **dispatch-only**, and it cannot
-publish until Pages is enabled in Settings → Pages → Source: GitHub Actions.
-That switch is left to a person on purpose: it is the step that puts the site
-in front of the world. Everything before it is proven on the runner — install,
-build and assemble all pass; the first dispatch failed at `configure-pages` and
-nowhere else.
+`.github/workflows/deploy.yml` publishes both to GitHub Pages on every merge to
+`main` — the marketing site at the root, the console demo under `/console/`:
 
-Once Pages is on, uncomment the `push` trigger in the workflow and every merge
-to `main` deploys.
+- <https://rafidr00.github.io/QED/>
+- <https://rafidr00.github.io/QED/console/>
 
 For a domain of its own, drop the `QED_BASE` variables and set
 `QED_SITE_URL=https://qed.dev`.

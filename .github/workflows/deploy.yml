@@ -3,23 +3,16 @@ name: deploy
 # Builds both surfaces as static files and publishes them to GitHub Pages:
 # the marketing site at the root, the console demo under /console/.
 #
-# It will not publish until Pages is enabled for the repository
-# (Settings -> Pages -> Source: GitHub Actions). That switch is deliberately
-# left to a person: this is the step that puts the site in front of the world.
-# Everything before it - install, build, assemble - is proven on the runner;
-# the first dispatch failed at configure-pages and nowhere else.
+# Pages is enabled for this repository, so every merge to main publishes.
 #
 # Serving it somewhere else instead: `pnpm build` produces apps/web/dist and
 # apps/console/dist, both plain static directories. Set QED_BASE and
 # QED_SITE_URL so the canonical URLs, the sitemap and the asset paths match
 # where it will actually live.
 
-# Dispatch-only until Pages is enabled: a push trigger would paint the repo red
-# on every commit for a switch nobody has flipped yet. Once Pages is on, add
-#   push:
-#     branches: [main]
-# above workflow_dispatch and every merge to main deploys.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
