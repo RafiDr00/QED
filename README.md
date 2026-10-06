@@ -43,8 +43,9 @@ failure.
 | **G9** | The marketing site ships under 40KB of gzipped JS. It currently ships 880 bytes. |
 | **G10** | The attestation renders to PDF, and the three verdict glyphs stay apart in greyscale — at full size and at the 9px they ship at. |
 
-Each gate names its own exemptions in `scripts/verify.ts`, with the reason, in
-the file. Nothing is skipped quietly.
+Each gate lives in its own file under `scripts/gates/`, with its exemptions and
+the reason for each beside the code that applies them. `scripts/verify.ts` only
+decides what to run. Nothing is skipped quietly.
 
 ## What the gates do not catch
 
@@ -54,6 +55,7 @@ one, a realistic violation of the property it names that would still pass:
 | | Blind spot |
 | --- | --- |
 | **G1** | It sweeps the resting page, every hover state, every focus state, and the verdict glyphs' SVG fills. `:active` colours are still unmeasured — forcing them needs a held pointer. |
+| **visual baselines** | 80 PNGs, two platforms, about 2MB. Every visual change rewrites them and git keeps each version, so this grows. If it becomes a problem the fix is to keep Linux baselines only and let CI be the enforcement point — not worth the churn today, but worth knowing. |
 | **G2** | It reads source files. A design value computed at runtime, or passed in as a number and turned into a length in JS, never appears in a file it scans. |
 | **G3** | It reads built CSS. A length set through an inline `style` attribute, or hidden inside a `calc()`, is not on the grid it checks. |
 | **G4** | It proves the viewBox, every path and every rect are verbatim. It says nothing about the transform around them — but G5 measures the render, and a mirrored or rotated mark fails four of its checks. |
