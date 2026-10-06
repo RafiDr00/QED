@@ -103,10 +103,18 @@ function check(flags: Flags): number {
     return 0;
   }
 
+  const root = repositoryRoot(cwd);
   const { result } = runPair(pairs, {
     inputs,
     command: `qed check --base ${ref}`,
     duration: formatDuration(Date.now() - started),
+    // A relative import is pinned to the same revision as the module that
+    // imports it, so a helper does not force the function to abstain.
+    readBase: (path) => fileAt(ref, path, root),
+    readHead: (path) => {
+      const absolute = join(root, path);
+      return existsSync(absolute) ? readFileSync(absolute, "utf8") : undefined;
+    },
   });
 
   process.stdout.write(renderRun(result, { color }));

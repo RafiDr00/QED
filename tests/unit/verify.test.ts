@@ -128,7 +128,7 @@ describe("ABSTAINED carries the obstruction, never a guess", () => {
     [
       "a database connection, as an import",
       `import { connect } from "node:net";\nexport function f(n: number): number { return connect(n).readyState.length; }`,
-      "imports a module",
+      "imports node:net",
     ],
     [
       "an async function",

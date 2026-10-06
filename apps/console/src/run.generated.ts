@@ -14,7 +14,7 @@ export const GENERATED_RUN: RunResult = {
   "command": "qed check --base origin/main",
   "changedFunctions": 7,
   "verifiableFunctions": 4,
-  "duration": "19.2s",
+  "duration": "0.1s",
   "runs": [
     {
       "path": "billing/ledger.ts",
@@ -22,7 +22,7 @@ export const GENERATED_RUN: RunResult = {
       "verdict": {
         "state": "EQUIVALENT",
         "inputs": 2000,
-        "strategy": "type-directed, seeded"
+        "strategy": "type-directed, corpus-seeded"
       }
     },
     {
@@ -31,7 +31,7 @@ export const GENERATED_RUN: RunResult = {
       "verdict": {
         "state": "EQUIVALENT",
         "inputs": 2000,
-        "strategy": "type-directed, seeded"
+        "strategy": "type-directed, corpus-seeded"
       }
     },
     {
@@ -57,7 +57,7 @@ export const GENERATED_RUN: RunResult = {
       "verdict": {
         "state": "EQUIVALENT",
         "inputs": 2000,
-        "strategy": "type-directed, seeded"
+        "strategy": "type-directed, corpus-seeded"
       }
     },
     {
@@ -73,7 +73,7 @@ export const GENERATED_RUN: RunResult = {
       "symbol": "pickWinner",
       "verdict": {
         "state": "ABSTAINED",
-        "obstruction": "depends on a random number"
+        "obstruction": "returns a different answer for the same input"
       }
     },
     {

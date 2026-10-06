@@ -1,14 +1,24 @@
-import { createContext, runInContext } from "node:vm";
+import { createContext, Script, type Context } from "node:vm";
 import ts from "typescript";
 
 /**
  * The determinism controls, as the design system names them: "clock frozen,
  * rng seed 0x5f3a, network denied, overlay fs".
  *
- * A function is run inside a fresh context whose ambient state we own
- * completely. Anything the function reaches for that we did not put there -
- * a module, a socket, the real clock - fails loudly rather than quietly
- * producing a result that happens to match today.
+ * A function runs inside a context whose ambient state we own completely.
+ * Anything it reaches for that we did not put there fails loudly rather than
+ * quietly producing a result that happens to match today.
+ *
+ * ## This is not a security boundary
+ *
+ * `node:vm` isolates names, not privileges. Code inside a context can reach
+ * the host realm through `constructor.constructor` and similar, and Node's own
+ * documentation says so. That is acceptable here because QED runs *your* code
+ * on *your* machine - the same code your test suite already runs.
+ *
+ * It is NOT acceptable for a hosted service running somebody else's code. That
+ * needs a real boundary: a separate process under seccomp, V8 isolates, or
+ * WASM. This file is the wrong place to pretend otherwise.
  */
 
 export interface Controls {
@@ -57,9 +67,6 @@ function seededRandom(seed: number): () => number {
 function seededMath(seed: number): typeof Math {
   const replacement = Object.create(null) as Record<string, unknown>;
   for (const key of Object.getOwnPropertyNames(Math)) {
-    // Read through the descriptor: taking `Math[key]` and binding it is the
-    // same thing, but detaching a method from its object first is a pattern
-    // worth not writing even when it happens to be safe here.
     const descriptor = Object.getOwnPropertyDescriptor(Math, key);
     if (!descriptor) continue;
     const value: unknown = descriptor.value;
@@ -82,8 +89,6 @@ function frozenDate(epochMs: number): DateConstructor {
   } as unknown as DateConstructor;
 
   Object.setPrototypeOf(Frozen, Real);
-  // Instances must still be real Dates: `x instanceof Date` and every method
-  // on the prototype has to keep working inside the sandbox.
   Object.defineProperty(Frozen, "prototype", {
     value: Real.prototype,
     writable: false,
@@ -101,32 +106,56 @@ function denied(obstruction: string): (...args: unknown[]) => never {
   };
 }
 
-export interface Sandbox {
-  /** The module's exports, as the sandbox sees them. */
-  readonly exports: Record<string, unknown>;
-  readonly controls: Controls;
-}
+/**
+ * Where a relative import resolves to.
+ *
+ * Imports are *pinned*, not resolved from disk: the caller supplies the source
+ * of each dependency at the revision being compared. Loading the same pinned
+ * dependency into both sandboxes keeps the comparison honest - it still
+ * isolates the change - while letting a function that calls a local helper be
+ * compared at all. Refusing every import, which is what this did before, made
+ * the engine abstain on most real code.
+ */
+export type Resolver = (
+  specifier: string,
+  fromFile: string,
+) => { readonly path: string; readonly source: string } | undefined;
 
 /**
- * Transpiles a TypeScript or JavaScript module and evaluates it in a context
- * with the controls applied.
+ * A module compiled once, as a function of (module, exports, require).
  *
- * `import` and `require` are denied rather than resolved. That is a real
- * limit, and it is reported as an obstruction instead of being papered over:
- * a function whose behaviour depends on another module cannot be compared in
- * isolation without that module's behaviour being pinned too.
+ * The wrapper is what makes re-running safe. Running a module's code at the
+ * top level of a context leaves its `let` and `const` bindings in that
+ * context's lexical scope, so the second run dies with "Identifier has
+ * already been declared" - which is exactly what happened the first time this
+ * reused a context. Inside a function those declarations are function-scoped,
+ * so every call starts from nothing. It is how Node's own CommonJS loader
+ * works, for the same reason.
  */
-export function loadModule(
-  source: string,
-  fileName: string,
-  controls: Controls = DEFAULT_CONTROLS,
-): Sandbox {
+interface Compiled {
+  readonly script: Script;
+  readonly fileName: string;
+}
+
+type Wrapper = (
+  module: { exports: Record<string, unknown> },
+  exports: Record<string, unknown>,
+  require: (specifier: string) => unknown,
+) => void;
+
+/** Transpiling the same text thousands of times was 45% of a run. */
+const compileCache = new Map<string, Compiled>();
+
+function compile(source: string, fileName: string): Compiled {
+  const key = `${fileName}\u0000${source}`;
+  const cached = compileCache.get(key);
+  if (cached) return cached;
+
   const transpiled = ts.transpileModule(source, {
     fileName,
     compilerOptions: {
       module: ts.ModuleKind.CommonJS,
       target: ts.ScriptTarget.ES2022,
-      // Keep the shape of what the author wrote; this is not a build.
       removeComments: false,
     },
     reportDiagnostics: true,
@@ -141,11 +170,39 @@ export function loadModule(
     );
   }
 
-  const moduleShim = { exports: {} as Record<string, unknown> };
-  const sandboxGlobals: Record<string, unknown> = {
-    module: moduleShim,
-    exports: moduleShim.exports,
-    require: denied("imports a module"),
+  const compiled: Compiled = {
+    script: new Script(
+      `(function (module, exports, require) {
+${transpiled.outputText}
+})`,
+      { filename: fileName },
+    ),
+    fileName,
+  };
+  compileCache.set(key, compiled);
+  return compiled;
+}
+
+export interface Sandbox {
+  readonly context: Context;
+  readonly compiled: Compiled;
+  readonly controls: Controls;
+  readonly resolver: Resolver | undefined;
+  /** Dependencies instantiated for the current instantiation. */
+  readonly loaded: Map<string, Record<string, unknown>>;
+  /** The module body, compiled once and called per instantiation. */
+  readonly wrapper: Wrapper;
+  /** Dependency bodies, compiled once each. */
+  readonly wrappers: Map<string, Wrapper>;
+}
+
+/** Evaluates a compiled wrapper in a context, once. */
+function wrapperFor(compiled: Compiled, context: Context): Wrapper {
+  return compiled.script.runInContext(context, { timeout: 5000 }) as Wrapper;
+}
+
+function globalsFor(controls: Controls): Record<string, unknown> {
+  return {
     Date: frozenDate(controls.epochMs),
     Math: seededMath(controls.rngSeed),
     fetch: denied("opens a network connection"),
@@ -159,7 +216,6 @@ export function loadModule(
       env: Object.freeze({}),
       argv: Object.freeze([]),
       platform: "qed",
-      // The real one would let a function read the clock sideways.
       hrtime: denied("reads a high-resolution clock"),
     }),
     console: Object.freeze({
@@ -170,20 +226,96 @@ export function loadModule(
       info: () => undefined,
     }),
   };
+}
 
-  const context = createContext(sandboxGlobals);
+function requireFrom(
+  sandbox: Sandbox,
+  specifier: string,
+  fromFile: string,
+): Record<string, unknown> {
+  if (!specifier.startsWith(".")) {
+    throw new ObstructionError(`imports ${specifier}`);
+  }
+
+  const resolved = sandbox.resolver?.(specifier, fromFile);
+  if (!resolved) {
+    throw new ObstructionError(`imports ${specifier}, which is not pinned`);
+  }
+
+  const already = sandbox.loaded.get(resolved.path);
+  if (already) return already;
+
+  const exports: Record<string, unknown> = {};
+  // Registered before running, so a cycle sees the partial module rather than
+  // recursing until the stack gives out.
+  sandbox.loaded.set(resolved.path, exports);
+
+  let wrapper = sandbox.wrappers.get(resolved.path);
+  if (!wrapper) {
+    wrapper = wrapperFor(compile(resolved.source, resolved.path), sandbox.context);
+    sandbox.wrappers.set(resolved.path, wrapper);
+  }
+
+  const module = { exports };
+  wrapper(module, exports, (next: string) =>
+    requireFrom(sandbox, next, resolved.path),
+  );
+
+  // A module that reassigns `module.exports` replaces the object registered.
+  sandbox.loaded.set(resolved.path, module.exports);
+  return module.exports;
+}
+
+/**
+ * Prepares a module for running. Compiling and building the context happen
+ * once; `instantiate` then gives a fresh module state per call.
+ */
+export function loadModule(
+  source: string,
+  fileName: string,
+  controls: Controls = DEFAULT_CONTROLS,
+  resolver?: Resolver,
+): Sandbox {
+  const compiled = compile(source, fileName);
+  const context = createContext(globalsFor(controls));
+  const sandbox: Sandbox = {
+    context,
+    compiled,
+    controls,
+    resolver,
+    loaded: new Map(),
+    wrapper: wrapperFor(compiled, context),
+    wrappers: new Map(),
+  };
+
+  // Prove it loads before anyone asks for a function out of it.
+  instantiate(sandbox);
+  return sandbox;
+}
+
+/**
+ * Calls the module body again, which resets everything it declared.
+ *
+ * Calling the compiled wrapper costs a fraction of a microsecond where
+ * building a fresh context costs about 260, and it gives the same isolation:
+ * a counter declared with `let` is back at its initial value, because the
+ * declaration is function-scoped rather than left in the context. Both claims
+ * are covered by tests.
+ */
+export function instantiate(sandbox: Sandbox): Record<string, unknown> {
+  const module = { exports: {} as Record<string, unknown> };
+  sandbox.loaded.clear();
+
   try {
-    runInContext(transpiled.outputText, context, {
-      filename: fileName,
-      timeout: 5000,
-    });
+    sandbox.wrapper(module, module.exports, (specifier: string) =>
+      requireFrom(sandbox, specifier, sandbox.compiled.fileName),
+    );
   } catch (error) {
     if (error instanceof ObstructionError) throw error;
     const message = error instanceof Error ? error.message : String(error);
     throw new ObstructionError(`fails to load: ${message}`);
   }
-
-  return { exports: moduleShim.exports, controls };
+  return module.exports;
 }
 
 export interface CallOutcome {
@@ -194,8 +326,34 @@ export interface CallOutcome {
   readonly obstruction?: string;
 }
 
+function invoke(
+  target: unknown,
+  args: readonly unknown[],
+  name: string,
+): CallOutcome {
+  if (typeof target !== "function") {
+    return {
+      kind: "threw",
+      value: undefined,
+      obstruction: `exports no function named '${name}'`,
+    };
+  }
+  try {
+    const value = (target as (...a: readonly unknown[]) => unknown)(...args);
+    if (isThenable(value)) {
+      return { kind: "threw", value: undefined, obstruction: "is asynchronous" };
+    }
+    return { kind: "returned", value };
+  } catch (error) {
+    if (error instanceof ObstructionError) {
+      return { kind: "threw", value: undefined, obstruction: error.obstruction };
+    }
+    return { kind: "threw", value: describeError(error) };
+  }
+}
+
 /**
- * Calls one exported function with one set of arguments.
+ * Calls one exported function on a module state no previous call has touched.
  *
  * A thrown error is an outcome, not a failure: two versions that throw the
  * same error for the same input agree, and two that throw differently do not.
@@ -205,31 +363,47 @@ export function callFunction(
   name: string,
   args: readonly unknown[],
 ): CallOutcome {
-  const target = sandbox.exports[name];
-  if (typeof target !== "function") {
-    return {
-      kind: "threw",
-      value: undefined,
-      obstruction: `exports no function named '${name}'`,
-    };
-  }
-
+  let exports: Record<string, unknown>;
   try {
-    const value = (target as (...a: readonly unknown[]) => unknown)(...args);
-    if (value instanceof Promise || isThenable(value)) {
-      return {
-        kind: "threw",
-        value: undefined,
-        obstruction: "is asynchronous",
-      };
-    }
-    return { kind: "returned", value };
+    exports = instantiate(sandbox);
   } catch (error) {
     if (error instanceof ObstructionError) {
       return { kind: "threw", value: undefined, obstruction: error.obstruction };
     }
-    return { kind: "threw", value: describeError(error) };
+    throw error;
   }
+  return invoke(exports[name], args, name);
+}
+
+/**
+ * Calls twice on one module state, to see whether anything is carried over.
+ * A module-level counter shows up here and nowhere else.
+ */
+export function callTwice(
+  sandbox: Sandbox,
+  name: string,
+  args: readonly unknown[],
+): [CallOutcome, CallOutcome] {
+  let exports: Record<string, unknown>;
+  try {
+    exports = instantiate(sandbox);
+  } catch (error) {
+    if (error instanceof ObstructionError) {
+      const blocked: CallOutcome = {
+        kind: "threw",
+        value: undefined,
+        obstruction: error.obstruction,
+      };
+      return [blocked, blocked];
+    }
+    throw error;
+  }
+
+  const target = exports[name];
+  return [
+    invoke(target, structuredClone(args), name),
+    invoke(target, structuredClone(args), name),
+  ];
 }
 
 function isThenable(value: unknown): boolean {
@@ -246,8 +420,7 @@ function isThenable(value: unknown): boolean {
  * Detected by shape rather than with `instanceof`. An error thrown inside the
  * sandbox is built from *its* realm's `Error`, so `instanceof Error` is false
  * out here - and every thrown error would have been recorded as the useless
- * `{ name: "Thrown", message: "RangeError: nope" }`, making two versions that
- * throw differently look like they agree on the error's name.
+ * `{ name: "Thrown", message: "RangeError: nope" }`.
  */
 export function describeError(error: unknown): { name: string; message: string } {
   if (

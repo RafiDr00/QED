@@ -1,6 +1,7 @@
 import ts from "typescript";
 import type { FunctionRun, RunResult } from "@qed/ui/model";
 
+import type { Resolver } from "./sandbox.js";
 import { verify, type VerifyOptions, type VerifyResult } from "./verify.js";
 
 /**
@@ -59,6 +60,50 @@ export interface RunOptions extends VerifyOptions {
   readonly command?: string;
   /** Already formatted, because the engine does not read a clock. */
   readonly duration?: string;
+  /** Reads a repository-relative file at the base revision. */
+  readonly readBase?: (path: string) => string | undefined;
+  /** Reads a repository-relative file as it is now. */
+  readonly readHead?: (path: string) => string | undefined;
+}
+
+/** The extensions a relative import may omit, in the order Node tries them. */
+const EXTENSIONS = ["", ".ts", ".tsx", ".mts", ".js", ".mjs", "/index.ts", "/index.js"];
+
+function dirOf(path: string): string {
+  const cut = path.lastIndexOf("/");
+  return cut === -1 ? "" : path.slice(0, cut);
+}
+
+/** Collapses "a/b/../c" and "./c" the way a module specifier means them. */
+function normalise(path: string): string {
+  const out: string[] = [];
+  for (const part of path.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") out.pop();
+    else out.push(part);
+  }
+  return out.join("/");
+}
+
+/**
+ * Turns a file reader into a resolver that pins relative imports.
+ *
+ * The dependency is read at the same revision as the module importing it, so
+ * both sides of the comparison see a consistent tree - and a dependency that
+ * itself changed shows up as part of the change rather than being hidden.
+ */
+export function relativeResolver(
+  read: (path: string) => string | undefined,
+): Resolver {
+  return (specifier, fromFile) => {
+    const joined = normalise(`${dirOf(fromFile)}/${specifier}`);
+    for (const extension of EXTENSIONS) {
+      const candidate = `${joined}${extension}`;
+      const source = read(candidate);
+      if (source !== undefined) return { path: candidate, source };
+    }
+    return undefined;
+  };
 }
 
 export interface EngineRun {
@@ -108,7 +153,15 @@ export function runPair(
           base: module.base,
           head: module.head,
         },
-        options,
+        {
+          ...options,
+          ...(options.readBase
+            ? { resolveBase: relativeResolver(options.readBase) }
+            : {}),
+          ...(options.readHead
+            ? { resolveHead: relativeResolver(options.readHead) }
+            : {}),
+        },
       );
       details.set(key, outcome);
       runs.push({ path: module.path, symbol, verdict: outcome.verdict });
