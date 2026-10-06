@@ -96,3 +96,39 @@ describe("show", () => {
     expect(show(10n)).toBe("10n");
   });
 });
+
+describe("what a value is, not only what it holds", () => {
+  class Money {
+    constructor(public cents: number) {}
+  }
+  class Cash {
+    constructor(public cents: number) {}
+  }
+
+  it("separates two classes with identical fields", () => {
+    const c = equals(new Money(1), new Cash(1));
+    expect(c.equal).toBe(false);
+    expect(c.difference?.reason).toBe("a Money became a Cash");
+  });
+
+  it("accepts the same class", () => {
+    expect(equals(new Money(1), new Money(1)).equal).toBe(true);
+  });
+
+  it("separates a class instance from a plain object", () => {
+    expect(equals(new Money(1), { cents: 1 }).equal).toBe(false);
+  });
+
+  it("still compares plain objects by their contents", () => {
+    expect(equals({ a: 1 }, { a: 1 }).equal).toBe(true);
+  });
+
+  it("handles a null-prototype object", () => {
+    const bare = Object.create(null) as Record<string, number>;
+    bare["a"] = 1;
+    expect(equals(bare, { a: 1 }).equal).toBe(false);
+    const other = Object.create(null) as Record<string, number>;
+    other["a"] = 1;
+    expect(equals(bare, other).equal).toBe(true);
+  });
+});

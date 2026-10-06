@@ -413,3 +413,25 @@ quietly makes. The marketing copy says so, in a section of its own.
 `run.generated.ts`, which both apps display. The abstain rate on the home page
 is computed from that run rather than written down - it is 43%, where the
 hand-written fixture claimed 29%.
+
+### D-040 · The counterexample carries a fifth line
+
+`components/Terminal/README.md` fixes four labelled lines: `input`, `base`,
+`head`, `repro`. A fifth, `affects`, is added when the engine can describe
+where a change bites:
+
+> Diverges exactly when `qty` is at least 100 and `tier` is "gold". That is
+> 6.2% of generated inputs.
+
+The four lines answer "can I reproduce it". Almost every diff is *meant* to
+change something, so the question a reviewer actually has is "do I care", and
+nothing in the output answered it. The line only appears when there is a
+description to give, so a run that cannot characterise its divergence looks
+exactly as the design system describes.
+
+### D-041 · Values are compared by class, not only by fields
+
+Two classes with identical fields used to compare equal, so a change from
+`Money` to `Cash` read as EQUIVALENT while any caller doing `instanceof` broke.
+The comparator now reports `a Money became a Cash`, and `show` names the class
+it prints - without which the counterexample read `{ cents: 0 }` on both sides.

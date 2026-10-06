@@ -169,14 +169,24 @@ export function buildRunLines(result: RunResult): readonly RunLine[] {
     if (run.verdict.state === "DIVERGED") {
       const { input, base, head, repro } = run.verdict.counterexample;
       push();
-      for (const [label, value] of [
+      const affects = run.verdict.counterexample.affects;
+      const labelled: readonly (readonly [string, string])[] = [
         ["input", input],
         ["base", base],
         ["head", head],
         ["repro", repro],
-      ] as const) {
+        ...(affects === undefined
+          ? []
+          : [["affects", affects] as readonly [string, string]]),
+      ];
+      // Sized to the longest label present, so the values line up whether or
+      // not the fifth line is there.
+      const labelWidth =
+        Math.max(...labelled.map(([label]) => label.length)) + COLUMN_GAP;
+
+      for (const [label, value] of labelled) {
         push(
-          { text: `${EVIDENCE_INDENT}${pad(label, 8)}`, tone: "muted" },
+          { text: `${EVIDENCE_INDENT}${pad(label, labelWidth)}`, tone: "muted" },
           { text: value, tone: "ink" },
         );
       }

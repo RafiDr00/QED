@@ -22,6 +22,18 @@ export interface Counterexample {
   readonly repro: string;
   /** "input 7 of 9,110": which generated input diverged, and out of how many. */
   readonly foundAt?: { readonly index: number; readonly of: number };
+  /**
+   * Where the change bites, in one clause.
+   *
+   * "Diverges exactly when `qty` is at least 100 and `tier` is "gold". That is
+   * 6.2% of generated inputs."
+   *
+   * A counterexample proves a change happened; this says what it changed. The
+   * design system's four labelled lines answer "can I reproduce it"; this
+   * answers "do I care", which is the question a reviewer actually has.
+   * DECISIONS.md D-040.
+   */
+  readonly affects?: string;
 }
 
 /** Proven: the engine compared `inputs` generated inputs and found no difference. */

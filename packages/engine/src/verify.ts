@@ -1,6 +1,7 @@
 import fc from "fast-check";
 import type { Verdict } from "@qed/ui/model";
 
+import { blastRadius, describeBlast, type BlastRadius } from "./blast.js";
 import { equals, show, EXACT, type Tolerance } from "./compare.js";
 import { generatorFor, mineCorpus } from "./generate.js";
 import {
@@ -62,6 +63,15 @@ export interface VerifyResult {
    * a record can be replayed rather than retyped from a printed string.
    */
   readonly counterexampleArgs?: readonly unknown[];
+  /**
+   * Where the change bites.
+   *
+   * Only measured when something diverged, because that is the only time a
+   * reader has the question.
+   */
+  readonly blast?: BlastRadius;
+  /** The same thing as a sentence. */
+  readonly blastSummary?: string;
 }
 
 const DEFAULT_INPUTS = 1000;
@@ -111,7 +121,7 @@ function sameOutcome(
 }
 
 /** Two versions, each under two ambients. */
-interface Pair {
+export interface Pair {
   readonly baseA: Sandbox;
   readonly headA: Sandbox;
   readonly baseB: Sandbox;
@@ -310,6 +320,15 @@ export function verify(
     return abstain("could not be pinned to a single input");
   }
 
+  const radius = blastRadius(
+    pair,
+    symbol,
+    generation,
+    tolerance,
+    mineCorpus(base, head).numbers,
+    { seed: options.seed ?? 0 },
+  );
+
   return {
     verdict: {
       state: "DIVERGED",
@@ -319,10 +338,12 @@ export function verify(
         head: showOutcome(finding.head),
         repro: reproCommand(fileName, symbol, minimal),
         foundAt: { index: details.numRuns, of: inputs },
+        ...(radius ? { affects: describeBlast(radius) } : {}),
       },
     },
     tolerancesApplied: [...applied],
     controls,
     counterexampleArgs: minimal,
+    ...(radius ? { blast: radius, blastSummary: describeBlast(radius) } : {}),
   };
 }

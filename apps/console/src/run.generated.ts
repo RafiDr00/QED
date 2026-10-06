@@ -14,7 +14,7 @@ export const GENERATED_RUN: RunResult = {
   "command": "qed check --base origin/main",
   "changedFunctions": 7,
   "verifiableFunctions": 4,
-  "duration": "0.1s",
+  "duration": "0.2s",
   "runs": [
     {
       "path": "billing/ledger.ts",
@@ -47,7 +47,8 @@ export const GENERATED_RUN: RunResult = {
           "foundAt": {
             "index": 20,
             "of": 2000
-          }
+          },
+          "affects": "Diverges exactly when `qty` is at least 100 and `tier` is \"gold\". That is 6.2% of generated inputs."
         }
       }
     },

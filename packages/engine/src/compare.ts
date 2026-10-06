@@ -63,6 +63,15 @@ export function equals(
     : { equal: true, applied: [...applied] };
 }
 
+/** The class a value was built from, as a name both realms agree on. */
+function constructorName(value: object): string {
+  const prototype: unknown = Object.getPrototypeOf(value);
+  if (prototype === null) return "null-prototype object";
+  const ctor: unknown = (prototype as { constructor?: unknown }).constructor;
+  if (typeof ctor !== "function") return "object";
+  return ctor.name === "" ? "anonymous class" : ctor.name;
+}
+
 function kindOf(value: unknown): string {
   if (value === null) return "null";
   if (Array.isArray(value)) return "array";
@@ -185,6 +194,20 @@ function walk(
     return undefined;
   }
 
+  // What a value is, not just what it holds. Two classes with identical
+  // fields are not the same answer: a caller doing `instanceof` can tell,
+  // and `structuredClone` would have flattened both to plain objects.
+  const baseClass = constructorName(base);
+  const headClass = constructorName(head as object);
+  if (baseClass !== headClass) {
+    return {
+      path,
+      base: baseClass,
+      head: headClass,
+      reason: `a ${baseClass} became a ${headClass}`,
+    };
+  }
+
   const baseKeys = Object.keys(base).sort();
   const headKeys = Object.keys(head as object).sort();
   if (baseKeys.join("\u0000") !== headKeys.join("\u0000")) {
@@ -227,7 +250,11 @@ export function show(value: unknown): string {
   if (typeof value === "object" && value !== null) {
     if (Array.isArray(value)) return `[${value.map(show).join(", ")}]`;
     const entries = Object.entries(value).map(([k, v]) => `${k}: ${show(v)}`);
-    return `{ ${entries.join(", ")} }`;
+    // Named, because two classes with identical fields are a real difference
+    // and "{ cents: 0 } vs { cents: 0 }" tells a reader nothing.
+    const name = constructorName(value);
+    const prefix = name === "Object" ? "" : `${name} `;
+    return `${prefix}{ ${entries.join(", ")} }`;
   }
   if (typeof value === "function") {
     return `[Function ${value.name === "" ? "anonymous" : value.name}]`;
