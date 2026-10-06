@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { renderRun, exitCodeFor } from "@qed/cli-render";
 import {
+  decodeArgs,
   runPair,
   show,
   loadModule,
@@ -148,9 +149,9 @@ function repro(flags: Flags): number {
 
   let args: unknown[];
   try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) throw new Error("not an array");
-    args = parsed;
+    // The same encoding `qed check` printed, so NaN, -0, Infinity, BigInt,
+    // Dates, Maps and Sets come back as themselves rather than as null.
+    args = decodeArgs(raw);
   } catch {
     process.stderr.write(`--input must be a JSON array of arguments.\n`);
     return 2;

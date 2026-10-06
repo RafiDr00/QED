@@ -3,6 +3,7 @@ import type { Verdict } from "@qed/ui/model";
 
 import { blastRadius, describeBlast, type BlastRadius } from "./blast.js";
 import { equals, show, EXACT, type Tolerance } from "./compare.js";
+import { encodeArgs } from "./encode.js";
 import { generatorFor, mineCorpus } from "./generate.js";
 import {
   callFunction,
@@ -95,7 +96,7 @@ export function reproCommand(
   symbol: string,
   args: readonly unknown[],
 ): string {
-  return `qed repro ${fileName} ${symbol} --input '${JSON.stringify(args)}'`;
+  return `qed repro ${fileName} ${symbol} --input '${encodeArgs(args)}'`;
 }
 
 /** What a reader is shown for one side of a divergence. */

@@ -1,5 +1,6 @@
 export * from "./sandbox.js";
 export * from "./compare.js";
+export * from "./encode.js";
 export * from "./generate.js";
 export * from "./verify.js";
 export * from "./blast.js";
