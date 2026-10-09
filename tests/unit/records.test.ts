@@ -190,7 +190,6 @@ describe("finding and loading a record", () => {
   it("finds a record by its full digest and by an abbreviation", async () => {
     const { dir, records } = await written();
     const [first] = records;
-    if (!first) throw new Error("fixture");
     const hex = first.digest.slice(7);
     expect(findRecord(dir, parseDigestQuery(first.digest)).record).toEqual(first);
     expect(
@@ -201,7 +200,6 @@ describe("finding and loading a record", () => {
   it("matches on the digest inside the record, not on the file name", async () => {
     const { dir, records } = await written();
     const [first, second] = records;
-    if (!first || !second) throw new Error("fixture");
     // A rewritten record left under the original's name.
     const path = join(dir, `${first.digest.slice(7)}.json`);
     writeFileSync(path, JSON.stringify(second));
@@ -219,7 +217,6 @@ describe("finding and loading a record", () => {
   it("lists every candidate when an abbreviation matches more than one", async () => {
     const { dir, records } = await written();
     const [first] = records;
-    if (!first) throw new Error("fixture");
     // A copy under another name: the same digest twice is still ambiguous.
     writeFileSync(join(dir, "copy.json"), JSON.stringify(first));
     expect(() => findRecord(dir, parseDigestQuery(first.digest))).toThrow(/2 records match/);
@@ -229,7 +226,6 @@ describe("finding and loading a record", () => {
     const { dir, records } = await written();
     writeFileSync(join(dir, "notes.json"), "{ not json");
     const [first] = records;
-    if (!first) throw new Error("fixture");
     expect(findRecord(dir, parseDigestQuery(first.digest)).record.digest).toBe(first.digest);
   });
 
@@ -247,7 +243,6 @@ describe("finding and loading a record", () => {
   it("refuses a DIVERGED verdict with no counterexample", async () => {
     const { dir, records } = await written();
     const [first] = records;
-    if (!first) throw new Error("fixture");
     writeFileSync(
       join(dir, "bad.json"),
       JSON.stringify({ ...first, verdict: { state: "DIVERGED" } }),
