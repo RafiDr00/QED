@@ -1,15 +1,17 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { isAbsolute, join, relative, resolve } from "node:path";
 
 import { renderRun, exitCodeFor } from "@qed/cli-render";
 import { verifyRecord, type AttestationRecord } from "@qed/ui/model";
 import {
   decodeArgs,
+  relativeResolver,
   runPair,
   show,
   loadModule,
   callFunction,
+  DEFAULT_CONTROLS,
   type ModulePair,
 } from "@qed/engine";
 
@@ -125,13 +127,7 @@ async function check(flags: Flags): Promise<number> {
     inputs,
     ...(tolerance ? { tolerance } : {}),
     command: echoed(ref, flags),
-    // A relative import is pinned to the same revision as the module that
-    // imports it, so a helper does not force the function to abstain.
-    readBase: (path) => fileAt(ref, path, root),
-    readHead: (path) => {
-      const absolute = join(root, path);
-      return existsSync(absolute) ? readFileSync(absolute, "utf8") : undefined;
-    },
+    ...readers(ref, root),
   });
 
   // Measured after the run: the options object above is built before any
@@ -163,12 +159,51 @@ async function check(flags: Flags): Promise<number> {
   // The digests are printed where the run's log keeps them, because a record
   // can only be checked against a digest held somewhere it is not.
   process.stderr.write(
-    `${records.length} ${records.length === 1 ? "record" : "records"} written to ${relative(cwd, dir) || "."}
+    `${records.length} ${records.length === 1 ? "record" : "records"} written to ${shown(cwd, dir)}
 ` +
       records.map((r) => `  ${r.digest}  ${r.path}  ${r.symbol}
 `).join(""),
   );
   return exitCodeFor(result);
+}
+
+/**
+ * A directory as a reader should see it: relative to where they are when it
+ * is beneath them, absolute otherwise.
+ *
+ * git reports the repository root by its real path. The working directory
+ * can be the same place by another name - a Windows 8.3 short name, macOS's
+ * /var for /private/var - and relative() between the two climbed out to the
+ * drive root and back.
+ */
+function shown(cwd: string, dir: string): string {
+  let here = cwd;
+  try {
+    here = realpathSync.native(cwd);
+  } catch {
+    // Keep the name we were given.
+  }
+  const path = relative(here, dir);
+  if (path === "") return ".";
+  return path.startsWith("..") || isAbsolute(path) ? dir : path;
+}
+
+/**
+ * Each side's view of the repository.
+ *
+ * A relative import is pinned to the same revision as the module that imports
+ * it, so a helper does not force the function to abstain. `check` and `repro`
+ * share this, because a repro that loaded its module differently from the
+ * check that printed it would not reproduce anything.
+ */
+function readers(ref: string, root: string) {
+  return {
+    readBase: (path: string) => fileAt(ref, path, root),
+    readHead: (path: string) => {
+      const absolute = join(root, path);
+      return existsSync(absolute) ? readFileSync(absolute, "utf8") : undefined;
+    },
+  };
 }
 
 /**
@@ -224,12 +259,13 @@ function repro(flags: Flags): number {
   }
 
   const head = readFileSync(absolute, "utf8");
-  for (const [label, source] of [
-    ["base", base],
-    ["head", head],
+  const { readBase, readHead } = readers(ref, root);
+  for (const [label, source, read] of [
+    ["base", base, readBase],
+    ["head", head, readHead],
   ] as const) {
     const outcome = callFunction(
-      loadModule(source, path),
+      loadModule(source, path, DEFAULT_CONTROLS, relativeResolver(read)),
       symbol,
       structuredClone(args),
     );
