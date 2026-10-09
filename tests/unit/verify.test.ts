@@ -111,6 +111,27 @@ describe("tolerance is applied only when asked, and always recorded", () => {
     const r = run(base, head, "f", { tolerance: { floatEpsilon: 1e-9 } });
     expect(r.verdict.state).toBe("DIVERGED");
   });
+
+  describe("an EQUIVALENT that leaned on a tolerance says so", () => {
+    const drifting = `export function f(on: boolean): number { return on ? 0.1 + 0.2 : 0; }`;
+    const exact = `export function f(on: boolean): number { return on ? 0.3 : 0; }`;
+
+    it("diverges without it", () => {
+      expect(run(drifting, exact).verdict.state).toBe("DIVERGED");
+    });
+
+    it("records the epsilon the agreement needed", () => {
+      const r = run(drifting, exact, "f", { tolerance: { floatEpsilon: 1e-9 } });
+      expect(r.verdict.state).toBe("EQUIVALENT");
+      expect(r.tolerancesApplied).toEqual(["float ε 1e-9"]);
+    });
+
+    it("records nothing when the tolerance was offered but never used", () => {
+      const r = run(exact, exact, "f", { tolerance: { floatEpsilon: 1e-9 } });
+      expect(r.verdict.state).toBe("EQUIVALENT");
+      expect(r.tolerancesApplied).toEqual([]);
+    });
+  });
 });
 
 describe("ABSTAINED carries the obstruction, never a guess", () => {

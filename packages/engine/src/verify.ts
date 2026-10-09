@@ -109,16 +109,30 @@ function showOutcome(outcome: CallOutcome): string {
   return show(outcome.value);
 }
 
+/**
+ * Whether two outcomes agree, recording into `applied` every tolerance the
+ * agreement needed.
+ *
+ * Collected on agreement as well as on divergence: an EQUIVALENT that only
+ * holds because of a float epsilon is a weaker claim, and the record has to
+ * say so. Dropping it here is how a record came to print "none applied" over
+ * a verdict that rested on one.
+ */
 function sameOutcome(
   a: CallOutcome,
   b: CallOutcome,
   tolerance: Tolerance,
+  applied?: Set<string>,
 ): boolean {
   if (a.obstruction !== undefined || b.obstruction !== undefined) {
     return a.obstruction === b.obstruction;
   }
   if (a.kind !== b.kind) return false;
-  return equals(a.value, b.value, tolerance).equal;
+  const comparison = equals(a.value, b.value, tolerance);
+  if (comparison.equal && applied) {
+    for (const t of comparison.applied) applied.add(t);
+  }
+  return comparison.equal;
 }
 
 /** Two versions, each under two ambients. */
@@ -151,6 +165,7 @@ export function examine(
   symbol: string,
   args: readonly unknown[],
   tolerance: Tolerance,
+  applied?: Set<string>,
 ): Finding {
   const baseA = callFunction(pair.baseA, symbol, structuredClone(args));
   if (baseA.obstruction !== undefined) {
@@ -164,13 +179,13 @@ export function examine(
   const baseB = callFunction(pair.baseB, symbol, structuredClone(args));
   const headB = callFunction(pair.headB, symbol, structuredClone(args));
   if (
-    !sameOutcome(baseA, baseB, tolerance) ||
-    !sameOutcome(headA, headB, tolerance)
+    !sameOutcome(baseA, baseB, tolerance, applied) ||
+    !sameOutcome(headA, headB, tolerance, applied)
   ) {
     return { kind: "nondeterministic" };
   }
 
-  return sameOutcome(baseA, headA, tolerance)
+  return sameOutcome(baseA, headA, tolerance, applied)
     ? { kind: "agree" }
     : { kind: "diverged", base: baseA, head: headA };
 }
@@ -238,6 +253,9 @@ export function verify(
     return "depends on something other than its arguments";
   };
 
+  // Every tolerance the verdict leans on, whichever comparison needed it.
+  const applied = new Set<string>();
+
   // State carried between calls is a property of the module rather than of one
   // input, so it is checked over the edges and a sample, twice per instance.
   const stateSamples = [
@@ -248,19 +266,18 @@ export function verify(
     for (const args of stateSamples) {
       const [first, second] = callTwice(sandbox, symbol, args);
       if (first.obstruction !== undefined) return abstain(first.obstruction);
-      if (!sameOutcome(first, second, tolerance)) {
+      if (!sameOutcome(first, second, tolerance, applied)) {
         return abstain("returns a different answer for the same input");
       }
     }
   }
 
-  const applied = new Set<string>();
   let blocked: string | undefined;
   let nondeterministic: string | undefined;
 
   const details = fc.check(
     fc.property(generation.arbitrary, (args: unknown[]) => {
-      const finding = examine(pair, symbol, args, tolerance);
+      const finding = examine(pair, symbol, args, tolerance, applied);
       switch (finding.kind) {
         case "blocked":
           blocked ??= finding.obstruction;
