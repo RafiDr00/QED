@@ -336,4 +336,43 @@ describe("verifyRecord", () => {
     });
     expect(RECORD.timestamp).not.toBe("2030-01-02 03:04 UTC");
   });
+
+  describe("every part of the verdict is signed, not only the repro line", () => {
+    const diverged: AttestationRecord = { ...RECORD, verdict: DIVERGED.verdict };
+    if (diverged.verdict.state !== "DIVERGED") throw new Error("fixture");
+    const counterexample = diverged.verdict.counterexample;
+
+    it.each([
+      ["the input", { input: "999" }],
+      ["the base result", { base: "edited" }],
+      ["the head result", { head: "edited" }],
+      ["where it bites", { affects: "Diverges nowhere that matters." }],
+      ["where it was found", { foundAt: { index: 1, of: 1 } }],
+    ] as const)("notices %s edited after signing", async (_, edit) => {
+      const digest = await reDeriveDigest(diverged);
+      const tampered: AttestationRecord = {
+        ...diverged,
+        digest,
+        verdict: {
+          state: "DIVERGED",
+          counterexample: { ...counterexample, ...edit },
+        },
+      };
+      expect((await verifyRecord(tampered, new Date(0))).status).toBe("mismatch");
+    });
+
+    it("notices an EQUIVALENT's strategy edited after signing", async () => {
+      const signed: AttestationRecord = {
+        ...RECORD,
+        verdict: { state: "EQUIVALENT", inputs: 10, strategy: "type-directed" },
+      };
+      const digest = await reDeriveDigest(signed);
+      const tampered: AttestationRecord = {
+        ...signed,
+        digest,
+        verdict: { state: "EQUIVALENT", inputs: 10, strategy: "exhaustive" },
+      };
+      expect((await verifyRecord(tampered, new Date(0))).status).toBe("mismatch");
+    });
+  });
 });

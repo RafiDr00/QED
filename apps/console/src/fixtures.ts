@@ -56,7 +56,7 @@ export const ATTESTATION: AttestationRecord = {
    * timer.
    */
   digest:
-    "sha256:001c5f396e6072b826e23ca48642555453a0f1bc2dd375c279c8649907c8b500",
+    "sha256:85a25819ab96dd9e09fb788452dc43407599f80233adfb2c84f1cfd3ac2ca7bf",
 };
 
 /**

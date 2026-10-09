@@ -61,6 +61,44 @@ export function changedFiles(ref: string, cwd: string): string[] {
   ].sort();
 }
 
+/**
+ * The commit a record names, marked when the working tree has moved past it.
+ *
+ * `qed check` reads files from disk, so a run over uncommitted edits did not
+ * run the commit HEAD names. Untracked files are left out: the records this
+ * writes are untracked themselves, and a file git does not know about is not
+ * in the diff either.
+ */
+export function workingCommit(cwd: string): string {
+  const head = git(["rev-parse", "--short", "HEAD"], cwd).trim();
+  const dirty = git(["status", "--porcelain", "--untracked-files=no"], cwd).trim();
+  return dirty === "" ? head : `${head}+uncommitted`;
+}
+
+/**
+ * `owner/name` from the origin remote, or the directory's own name.
+ *
+ * Only the last two path segments are kept: a remote URL can carry a token
+ * (`https://x-access-token:…@github.com/…`), and a record is meant to be
+ * handed around.
+ */
+export function repositoryName(cwd: string): string {
+  const root = repositoryRoot(cwd);
+  const fallback = root.split(/[\\/]/).filter(Boolean).pop() ?? "repository";
+  let url: string;
+  try {
+    url = git(["remote", "get-url", "origin"], cwd).trim();
+  } catch {
+    return fallback;
+  }
+  const segments = url
+    .replace(/\.git$/, "")
+    .split(/[/:\\]/)
+    .filter((s) => s !== "" && !s.includes("@"));
+  const [owner, name] = segments.slice(-2);
+  return owner !== undefined && name !== undefined ? `${owner}/${name}` : fallback;
+}
+
 /** A file's contents at `ref`, or undefined when it did not exist there. */
 export function fileAt(
   ref: string,

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative, resolve } from "node:path";
 
 import { renderRun, exitCodeFor } from "@qed/cli-render";
 import {
@@ -24,13 +24,22 @@ import {
 import {
   changedFiles,
   fileAt,
+  repositoryName,
   repositoryRoot,
   resolveRef,
+  workingCommit,
   GitError,
 } from "./git.js";
+import {
+  buildRecord,
+  formatUtc,
+  writeRecords,
+  DEFAULT_RECORDS_DIR,
+} from "./records.js";
+import { ENGINE } from "./version.js";
 
 /**
- * `qed check` and `qed repro`.
+ * `qed check`, `qed repro` and `qed verify`.
  *
  * The output is produced by @qed/cli-render, which walks the same line model
  * the terminal pane on the website walks - so what a reader sees here and what
@@ -40,9 +49,11 @@ import {
 const USAGE = `qed - deterministic verification
 
   qed check [--base <ref>] [--inputs <n>] [--tolerance float=<e>,rel=<e>]
-            [--no-color]
-      Verify every exported function that changed against <ref>.
-      A tolerance loosens a comparison only where one needs it.
+            [--records <dir>] [--no-color]
+      Verify every exported function that changed against <ref>, and write
+      one record per function to <dir> (default .qed/records). A tolerance
+      loosens a comparison only where one needs it, and every one applied
+      is written into the record.
       Exits 1 only when something diverged; 2 when the run could not start.
 
   qed repro <file> <symbol> --input '<json-array>' [--base <ref>]
@@ -73,7 +84,7 @@ function gather(ref: string, cwd: string): ModulePair[] {
   return pairs;
 }
 
-function check(flags: Flags): number {
+async function check(flags: Flags): Promise<number> {
   if (flags.positional.length > 0) {
     throw new UsageError(`qed check takes no file or symbol: '${flags.positional[0]}'.`);
   }
@@ -87,7 +98,8 @@ function check(flags: Flags): number {
   const cwd = process.cwd();
   resolveRef(ref, repositoryRoot(cwd));
 
-  const started = Date.now();
+  const startedAt = new Date();
+  const started = startedAt.getTime();
   const pairs = gather(ref, cwd);
   if (pairs.length === 0) {
     process.stdout.write(
@@ -97,11 +109,10 @@ function check(flags: Flags): number {
   }
 
   const root = repositoryRoot(cwd);
-  const { result } = runPair(pairs, {
+  const run = runPair(pairs, {
     inputs,
     ...(tolerance ? { tolerance } : {}),
     command: echoed(ref, flags),
-    duration: formatDuration(Date.now() - started),
     // A relative import is pinned to the same revision as the module that
     // imports it, so a helper does not force the function to abstain.
     readBase: (path) => fileAt(ref, path, root),
@@ -111,7 +122,40 @@ function check(flags: Flags): number {
     },
   });
 
+  // Measured after the run: the options object above is built before any
+  // function is verified, so timing it there printed the cost of reading the
+  // diff as the cost of the run.
+  const result = {
+    ...run.result,
+    duration: formatDuration(Date.now() - started),
+  };
+
+  const context = {
+    repository: repositoryName(root),
+    commit: workingCommit(root),
+    timestamp: formatUtc(startedAt),
+    engine: ENGINE,
+  };
+  const records = await Promise.all(
+    result.runs.map((r) =>
+      buildRecord(r, run.details.get(`${r.path}:${r.symbol}`), context),
+    ),
+  );
+  const flagged = flags.named.get("records");
+  const dir = flagged !== undefined ? resolve(cwd, flagged) : join(root, DEFAULT_RECORDS_DIR);
+  writeRecords(dir, records);
+
   process.stdout.write(renderRun(result, { color }));
+
+  // On stderr, so stdout stays exactly the output the design system specifies.
+  // The digests are printed where the run's log keeps them, because a record
+  // can only be checked against a digest held somewhere it is not.
+  process.stderr.write(
+    `${records.length} ${records.length === 1 ? "record" : "records"} written to ${relative(cwd, dir) || "."}
+` +
+      records.map((r) => `  ${r.digest}  ${r.path}  ${r.symbol}
+`).join(""),
+  );
   return exitCodeFor(result);
 }
 
@@ -188,7 +232,7 @@ function repro(flags: Flags): number {
   return 0;
 }
 
-function main(): number {
+async function main(): Promise<number> {
   const argv = process.argv.slice(2);
   const [command, ...rest] = argv;
 
@@ -208,7 +252,7 @@ function main(): number {
     const flags = parseFlags(rest, COMMANDS[command], command);
     switch (command) {
       case "check":
-        return check(flags);
+        return await check(flags);
       case "repro":
         return repro(flags);
       case "verify":
@@ -230,4 +274,18 @@ ${USAGE}`);
   }
 }
 
-process.exitCode = main();
+// Exit 1 means "something diverged", and CI acts on it. A crash is not a
+// divergence, so it must not borrow that code: it reports as a run that
+// could not complete.
+main().then(
+  (code) => {
+    process.exitCode = code;
+  },
+  (error: unknown) => {
+    process.stderr.write(
+      `qed could not complete the run: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}
+`,
+    );
+    process.exitCode = 2;
+  },
+);

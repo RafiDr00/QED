@@ -38,16 +38,42 @@ export type VerificationState =
   | { readonly status: "error"; readonly detail: string };
 
 /**
+ * The whole verdict, as one line.
+ *
+ * Every field a reader is shown goes in. Signing only the repro line left the
+ * printed input and both results free to be edited under a digest that still
+ * matched - the record would have verified while saying something it never
+ * found. The counterexample is JSON-encoded so a field containing the
+ * separator cannot move text from one field into the next.
+ */
+function canonicalVerdict(verdict: AttestationRecord["verdict"]): string {
+  switch (verdict.state) {
+    case "EQUIVALENT":
+      return verdict.strategy === undefined
+        ? `EQUIVALENT:${verdict.inputs}`
+        : `EQUIVALENT:${verdict.inputs}:${verdict.strategy}`;
+    case "DIVERGED": {
+      const c = verdict.counterexample;
+      return `DIVERGED:${JSON.stringify([
+        c.input,
+        c.base,
+        c.head,
+        c.repro,
+        c.foundAt ? `${c.foundAt.index}/${c.foundAt.of}` : "",
+        c.affects ?? "",
+      ])}`;
+    }
+    case "ABSTAINED":
+      return `ABSTAINED:${verdict.obstruction}`;
+  }
+}
+
+/**
  * The signed fields, in a fixed order. Everything the record asserts goes in;
  * the digest itself does not, because it is what this produces.
  */
 export function canonicalRecord(record: AttestationRecord): string {
-  const verdict =
-    record.verdict.state === "EQUIVALENT"
-      ? `EQUIVALENT:${record.verdict.inputs}`
-      : record.verdict.state === "DIVERGED"
-        ? `DIVERGED:${record.verdict.counterexample.repro}`
-        : `ABSTAINED:${record.verdict.obstruction}`;
+  const verdict = canonicalVerdict(record.verdict);
 
   return [
     record.repository,
