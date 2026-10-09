@@ -1,0 +1,131 @@
+name: release
+
+# Builds the qed binary on every platform it ships for, proves each one runs a
+# real check, and publishes them with the SHA256SUMS that install.sh checks
+# every download against.
+#
+# Runs on a v* tag, or by hand with the tag to publish. Nothing here runs on an
+# ordinary push. The tag must match packages/cli/package.json, because that
+# version is what every record the binary writes names as its engine.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to publish, e.g. v0.1.0"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: linux-x64 }
+          - { os: ubuntu-24.04-arm, target: linux-arm64 }
+          - { os: macos-latest, target: darwin-arm64 }
+          - { os: macos-15-intel, target: darwin-x64 }
+          - { os: windows-latest, target: win32-x64 }
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: The tag names the version the binary reports
+        run: |
+          version="v$(node -p 'require("./packages/cli/package.json").version')"
+          if [ "$version" != "$TAG" ]; then
+            echo "Tag $TAG does not match packages/cli/package.json ($version)." >&2
+            exit 1
+          fi
+
+      - name: Build the binary
+        run: pnpm build:binary
+
+      - name: Run a real check with it
+        run: |
+          bin="$PWD/dist/bin/$(ls dist/bin | grep '^qed-')"
+          test "$(basename "$bin" .exe)" = "qed-${{ matrix.target }}"
+
+          repo="$RUNNER_TEMP/smoke"
+          mkdir -p "$repo/billing"
+          cp examples/ledger/base.ts "$repo/billing/ledger.ts"
+          cd "$repo"
+          git init -q
+          git -c user.email=ci@example.invalid -c user.name=ci add -A
+          git -c user.email=ci@example.invalid -c user.name=ci commit -qm base
+          cp "$GITHUB_WORKSPACE/examples/ledger/head.ts" billing/ledger.ts
+
+          # The ledger example diverges by design, so a working binary exits 1.
+          set +e
+          "$bin" check --base HEAD --no-color > out.txt 2> err.txt
+          code=$?
+          set -e
+          cat out.txt err.txt
+          test "$code" = 1
+          grep -q "DIVERGED" out.txt
+
+          digest="$(grep -m1 -o 'sha256:[0-9a-f]\{64\}' err.txt)"
+          "$bin" verify --digest "$digest"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qed-${{ matrix.target }}
+          path: dist/bin/qed-*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: qed-*
+          merge-multiple: true
+          path: release
+
+      - name: Write SHA256SUMS
+        working-directory: release
+        run: |
+          sha256sum qed-* > SHA256SUMS
+          cat SHA256SUMS
+          test "$(wc -l < SHA256SUMS)" = 5
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$TAG" \
+            --generate-notes \
+            --verify-tag
