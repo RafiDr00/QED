@@ -12,7 +12,22 @@ import {
   type ModulePair,
 } from "@qed/engine";
 
-import { changedFiles, fileAt, repositoryRoot, GitError } from "./git.js";
+import {
+  COMMANDS,
+  isCommand,
+  parseFlags,
+  parseInputs,
+  parseTolerance,
+  UsageError,
+  type Flags,
+} from "./args.js";
+import {
+  changedFiles,
+  fileAt,
+  repositoryRoot,
+  resolveRef,
+  GitError,
+} from "./git.js";
 
 /**
  * `qed check` and `qed repro`.
@@ -24,45 +39,17 @@ import { changedFiles, fileAt, repositoryRoot, GitError } from "./git.js";
 
 const USAGE = `qed - deterministic verification
 
-  qed check [--base <ref>] [--inputs <n>] [--no-color]
+  qed check [--base <ref>] [--inputs <n>] [--tolerance float=<e>,rel=<e>]
+            [--no-color]
       Verify every exported function that changed against <ref>.
-      Exits non-zero only when something diverged.
+      A tolerance loosens a comparison only where one needs it.
+      Exits 1 only when something diverged; 2 when the run could not start.
 
   qed repro <file> <symbol> --input '<json-array>' [--base <ref>]
       Run one input through both versions and print what each returned.
 
   qed --help
 `;
-
-interface Flags {
-  readonly positional: readonly string[];
-  readonly named: ReadonlyMap<string, string>;
-  readonly switches: ReadonlySet<string>;
-}
-
-function parse(argv: readonly string[]): Flags {
-  const positional: string[] = [];
-  const named = new Map<string, string>();
-  const switches = new Set<string>();
-
-  for (let i = 0; i < argv.length; i++) {
-    const token = argv[i];
-    if (token === undefined) continue;
-    if (!token.startsWith("--")) {
-      positional.push(token);
-      continue;
-    }
-    const key = token.slice(2);
-    const next = argv[i + 1];
-    if (next !== undefined && !next.startsWith("--")) {
-      named.set(key, next);
-      i++;
-    } else {
-      switches.add(key);
-    }
-  }
-  return { positional, named, switches };
-}
 
 /** Only files the engine can read at all. */
 const VERIFIABLE_EXTENSION = /\.(ts|js|mts|mjs)$/;
@@ -87,13 +74,18 @@ function gather(ref: string, cwd: string): ModulePair[] {
 }
 
 function check(flags: Flags): number {
+  if (flags.positional.length > 0) {
+    throw new UsageError(`qed check takes no file or symbol: '${flags.positional[0]}'.`);
+  }
   const ref = flags.named.get("base") ?? "origin/main";
-  const inputs = Number(flags.named.get("inputs") ?? 1000);
+  const inputs = parseInputs(flags.named.get("inputs"), 1000);
+  const tolerance = parseTolerance(flags.named.get("tolerance"));
   // Colour only on a terminal: piping into a file or a ticket should give
   // plain text, which the design system says the output has to survive.
   const color =
     !flags.switches.has("no-color") && process.stdout.isTTY;
   const cwd = process.cwd();
+  resolveRef(ref, repositoryRoot(cwd));
 
   const started = Date.now();
   const pairs = gather(ref, cwd);
@@ -107,7 +99,8 @@ function check(flags: Flags): number {
   const root = repositoryRoot(cwd);
   const { result } = runPair(pairs, {
     inputs,
-    command: `qed check --base ${ref}`,
+    ...(tolerance ? { tolerance } : {}),
+    command: echoed(ref, flags),
     duration: formatDuration(Date.now() - started),
     // A relative import is pinned to the same revision as the module that
     // imports it, so a helper does not force the function to abstain.
@@ -122,6 +115,20 @@ function check(flags: Flags): number {
   return exitCodeFor(result);
 }
 
+/**
+ * The command as the output echoes it: every flag that changes the result.
+ * A run made under a tolerance that printed as a plain `qed check` would hide
+ * the one thing that weakened it.
+ */
+function echoed(ref: string, flags: Flags): string {
+  const parts = ["qed check", `--base ${ref}`];
+  for (const key of ["inputs", "tolerance"] as const) {
+    const value = flags.named.get(key);
+    if (value !== undefined) parts.push(`--${key} ${value}`);
+  }
+  return parts.join(" ");
+}
+
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   const seconds = Math.round(ms / 1000);
@@ -130,15 +137,18 @@ function formatDuration(ms: number): string {
 }
 
 function repro(flags: Flags): number {
-  const [path, symbol] = flags.positional;
+  const [path, symbol, extra] = flags.positional;
   const raw = flags.named.get("input");
   if (path === undefined || symbol === undefined || raw === undefined) {
-    process.stderr.write(USAGE);
-    return 2;
+    throw new UsageError("qed repro needs a file, a symbol and --input.");
+  }
+  if (extra !== undefined) {
+    throw new UsageError(`qed repro takes one file and one symbol, not '${extra}'.`);
   }
 
   const ref = flags.named.get("base") ?? "origin/main";
   const root = repositoryRoot(process.cwd());
+  resolveRef(ref, root);
   const base = fileAt(ref, path, root);
   const absolute = join(root, path);
 
@@ -180,29 +190,44 @@ function repro(flags: Flags): number {
 
 function main(): number {
   const argv = process.argv.slice(2);
-  const flags = parse(argv);
-  const command = flags.positional[0];
+  const [command, ...rest] = argv;
 
-  if (flags.switches.has("help") || command === undefined) {
+  if (argv.includes("--help") || argv.includes("-h")) {
     process.stdout.write(USAGE);
-    return command === undefined ? 2 : 0;
+    return 0;
+  }
+  if (command === undefined) {
+    process.stderr.write(USAGE);
+    return 2;
   }
 
   try {
-    if (command === "check") return check(flags);
-    if (command === "repro") {
-      return repro({ ...flags, positional: flags.positional.slice(1) });
+    if (!isCommand(command)) {
+      throw new UsageError(`Unknown command '${command}'.`);
+    }
+    const flags = parseFlags(rest, COMMANDS[command], command);
+    switch (command) {
+      case "check":
+        return check(flags);
+      case "repro":
+        return repro(flags);
+      case "verify":
+        throw new UsageError("qed verify is not available yet.");
     }
   } catch (error) {
+    if (error instanceof UsageError) {
+      process.stderr.write(`${error.message}
+
+${USAGE}`);
+      return 2;
+    }
     if (error instanceof GitError) {
-      process.stderr.write(`${error.message}\n`);
+      process.stderr.write(`${error.message}
+`);
       return 2;
     }
     throw error;
   }
-
-  process.stderr.write(`Unknown command '${command}'.\n\n${USAGE}`);
-  return 2;
 }
 
 process.exitCode = main();

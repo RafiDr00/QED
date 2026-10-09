@@ -25,6 +25,25 @@ export function repositoryRoot(cwd: string): string {
   return git(["rev-parse", "--show-toplevel"], cwd).trim();
 }
 
+/**
+ * Fails, with exit 2, when `ref` names no commit.
+ *
+ * Without this a mistyped base ref read as "nothing changed" - `git show`
+ * quietly found no file at a ref that does not exist - and the run printed a
+ * clean result it had never computed.
+ */
+export function resolveRef(ref: string, cwd: string): void {
+  const result = spawnSync(
+    "git",
+    ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`],
+    { cwd, encoding: "utf8" },
+  );
+  if (result.error) throw new GitError(`git is not available: ${result.error.message}`);
+  if (result.status !== 0) {
+    throw new GitError(`The base ref '${ref}' names no commit in this repository.`);
+  }
+}
+
 /** Files that differ from `ref`, as repository-relative paths. */
 export function changedFiles(ref: string, cwd: string): string[] {
   // Three dots: what changed on this branch since it left the base, rather
