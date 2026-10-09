@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
 import { renderRun, exitCodeFor } from "@qed/cli-render";
+import { verifyRecord, type AttestationRecord } from "@qed/ui/model";
 import {
   decodeArgs,
   runPair,
@@ -32,9 +33,14 @@ import {
 } from "./git.js";
 import {
   buildRecord,
+  findRecord,
   formatUtc,
+  loadRecord,
+  matchesDigest,
+  parseDigestQuery,
   writeRecords,
   DEFAULT_RECORDS_DIR,
+  RecordLookupError,
 } from "./records.js";
 import { ENGINE } from "./version.js";
 
@@ -58,6 +64,12 @@ const USAGE = `qed - deterministic verification
 
   qed repro <file> <symbol> --input '<json-array>' [--base <ref>]
       Run one input through both versions and print what each returned.
+
+  qed verify --digest <sha256> [--records <dir>]
+  qed verify <record.json> [--digest <sha256>]
+      Re-derive a record's digest from its own fields and compare it with the
+      digest you hold. The digest may be abbreviated: 9f2a1c84bd0e...7c31.
+      Exits 1 when the record has been altered.
 
   qed --help
 `;
@@ -232,6 +244,95 @@ function repro(flags: Flags): number {
   return 0;
 }
 
+/**
+ * `qed verify`: the console's Verify button, on the command line.
+ *
+ * "Recomputing the digest proves the record has not been altered since it was
+ * written." Only against a digest held somewhere the record is not - anyone
+ * can rewrite a record and recompute a digest that matches it. So a digest
+ * given on the command line has to be the one the record carries, and a file
+ * checked without one is reported as checked against itself, and no more.
+ */
+async function verifyCommand(flags: Flags): Promise<number> {
+  const [file, extra] = flags.positional;
+  const raw = flags.named.get("digest");
+  if (extra !== undefined) {
+    throw new UsageError(`qed verify takes one record, not '${extra}'.`);
+  }
+  if (file === undefined && raw === undefined) {
+    throw new UsageError("qed verify needs --digest, a record file, or both.");
+  }
+  const query = raw !== undefined ? parseDigestQuery(raw) : undefined;
+  const cwd = process.cwd();
+
+  let record: AttestationRecord;
+  if (file !== undefined) {
+    if (!existsSync(resolve(cwd, file))) {
+      throw new RecordLookupError(`${file} does not exist.`);
+    }
+    record = loadRecord(resolve(cwd, file));
+  } else if (query !== undefined) {
+    const flagged = flags.named.get("records");
+    let dir: string;
+    if (flagged !== undefined) {
+      dir = resolve(cwd, flagged);
+    } else {
+      // Records live at the repository root; outside one, look here.
+      try {
+        dir = join(repositoryRoot(cwd), DEFAULT_RECORDS_DIR);
+      } catch {
+        dir = join(cwd, DEFAULT_RECORDS_DIR);
+      }
+    }
+    record = findRecord(dir, query).record;
+  } else {
+    throw new UsageError("qed verify needs --digest, a record file, or both.");
+  }
+
+  const out = (line: string) => process.stdout.write(`${line}
+`);
+  const subject = `  ${record.path}  ${record.symbol}  ${record.verdict.state}`;
+
+  if (query !== undefined && !matchesDigest(record.digest, query)) {
+    out(`mismatch  ${record.digest}`);
+    out(subject);
+    out(`  The record carries a different digest from the one you hold (${raw}).`);
+    out("  Do not rely on it.");
+    return 1;
+  }
+
+  const state = await verifyRecord(record, new Date());
+  switch (state.status) {
+    case "verified":
+      out(`verified  ${record.digest}`);
+      out(subject);
+      out(`  Re-derived from the record's own fields at ${state.checkedAt}.`);
+      if (query === undefined) {
+        out("  Checked against the digest the file carries, which proves only that");
+        out("  it is consistent with itself. Pass --digest with the one from the");
+        out("  run's log to check it against a copy the file cannot rewrite.");
+      } else if (!query.complete) {
+        out("  Matched on an abbreviated digest; the full one above is what was checked.");
+      }
+      out(`  Not checked: who signed it (${record.signer}) and Rekor inclusion`);
+      out(`  (${record.rekorIndex}). Both need a network this check does not use.`);
+      return 0;
+    case "mismatch":
+      out(`mismatch  ${record.digest}`);
+      out(subject);
+      out(`  ${state.detail}`);
+      return 1;
+    case "error":
+    case "idle":
+    case "checking":
+      process.stderr.write(
+        `${"detail" in state ? state.detail : "The check did not run."}
+`,
+      );
+      return 2;
+  }
+}
+
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
   const [command, ...rest] = argv;
@@ -256,13 +357,18 @@ async function main(): Promise<number> {
       case "repro":
         return repro(flags);
       case "verify":
-        throw new UsageError("qed verify is not available yet.");
+        return await verifyCommand(flags);
     }
   } catch (error) {
     if (error instanceof UsageError) {
       process.stderr.write(`${error.message}
 
 ${USAGE}`);
+      return 2;
+    }
+    if (error instanceof RecordLookupError) {
+      process.stderr.write(`${error.message}
+`);
       return 2;
     }
     if (error instanceof GitError) {

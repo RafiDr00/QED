@@ -1,9 +1,10 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { DEFAULT_CONTROLS, type Controls, type VerifyResult } from "@qed/engine";
 import {
   reDeriveDigest,
+  VERDICT_STATES,
   type AttestationRecord,
   type FunctionRun,
 } from "@qed/ui/model";
@@ -122,4 +123,170 @@ export function writeRecords(
     writeFileSync(path, `${JSON.stringify(record, null, 2)}\n`, "utf8");
     return path;
   });
+}
+
+/** A record that cannot be found, or is not a record. Exit 2. */
+export class RecordLookupError extends Error {
+  override readonly name = "RecordLookupError";
+}
+
+/** The part of a digest someone is holding: all of it, or its two ends. */
+export interface DigestQuery {
+  readonly prefix: string;
+  readonly suffix: string;
+  /** True when the whole digest was given, not an abbreviation of it. */
+  readonly complete: boolean;
+}
+
+/**
+ * The fewest hex characters a held digest may be abbreviated to: 64 bits.
+ *
+ * Anyone can rewrite a record and recompute its digest, so an abbreviation is
+ * only as strong as the work it takes to forge a rewrite that matches it. A
+ * one-character prefix takes sixteen tries. Sixteen characters - exactly the
+ * `9f2a1c84bd0e...7c31` form the docs print - takes about 2^64.
+ */
+export const MIN_DIGEST_CHARS = 16;
+
+/**
+ * Reads `sha256:<hex>`, a hex prefix, or the elided `9f2a1c84bd0e...7c31`
+ * form a digest is printed in when it is too long for the line.
+ */
+export function parseDigestQuery(raw: string): DigestQuery {
+  const body = raw.trim().toLowerCase().replace(/^sha256:/, "");
+  const [prefix = "", suffix = "", ...rest] = body.split(/\.{3}|…/);
+  if (
+    rest.length > 0 ||
+    !/^[0-9a-f]*$/.test(prefix) ||
+    !/^[0-9a-f]*$/.test(suffix) ||
+    prefix.length + suffix.length > 64
+  ) {
+    throw new RecordLookupError(
+      `'${raw}' is not a sha256 digest, a prefix of one, or one elided with '...'.`,
+    );
+  }
+  if (prefix.length + suffix.length < MIN_DIGEST_CHARS) {
+    throw new RecordLookupError(
+      `'${raw}' is too short to check against: give at least ${MIN_DIGEST_CHARS} hex characters of the digest.`,
+    );
+  }
+  return { prefix, suffix, complete: prefix.length === 64 };
+}
+
+export function matchesDigest(digest: string, query: DigestQuery): boolean {
+  const hex = hexOf(digest);
+  return (
+    hex.length >= query.prefix.length + query.suffix.length &&
+    hex.startsWith(query.prefix) &&
+    hex.endsWith(query.suffix)
+  );
+}
+
+const isString = (v: unknown): v is string => typeof v === "string";
+const isStrings = (v: unknown): v is string[] =>
+  Array.isArray(v) && v.every(isString);
+
+/** Why `value` is not a record, or undefined when it is one. */
+function malformed(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null) return "it is not an object";
+  const r = value as Record<string, unknown>;
+  for (const key of [
+    "symbol",
+    "path",
+    "repository",
+    "commit",
+    "timestamp",
+    "inputStrategy",
+    "engine",
+    "signer",
+    "rekorIndex",
+    "digest",
+  ]) {
+    if (!isString(r[key])) return `'${key}' is missing or not text`;
+  }
+  if (!isStrings(r.controls)) return "'controls' is not a list of text";
+  if (!isStrings(r.tolerances)) return "'tolerances' is not a list of text";
+
+  const v = r.verdict as Record<string, unknown> | null | undefined;
+  if (typeof v !== "object" || v === null) return "'verdict' is missing";
+  if (!(VERDICT_STATES as readonly unknown[]).includes(v.state)) {
+    return `'verdict.state' is not one of ${VERDICT_STATES.join(", ")}`;
+  }
+  if (v.state === "EQUIVALENT" && typeof v.inputs !== "number") {
+    return "an EQUIVALENT verdict has no input count";
+  }
+  if (v.state === "ABSTAINED" && !isString(v.obstruction)) {
+    return "an ABSTAINED verdict has no obstruction";
+  }
+  if (v.state === "DIVERGED") {
+    const c = v.counterexample as Record<string, unknown> | null | undefined;
+    if (typeof c !== "object" || c === null) {
+      return "a DIVERGED verdict has no counterexample";
+    }
+    for (const key of ["input", "base", "head", "repro"]) {
+      if (!isString(c[key])) return `'verdict.counterexample.${key}' is missing`;
+    }
+  }
+  return undefined;
+}
+
+/** Reads one record file, refusing anything that is not a whole record. */
+export function loadRecord(path: string): AttestationRecord {
+  let value: unknown;
+  try {
+    value = JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    throw new RecordLookupError(
+      `${path} could not be read as JSON: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  const reason = malformed(value);
+  if (reason !== undefined) {
+    throw new RecordLookupError(`${path} is not a QED record: ${reason}.`);
+  }
+  return value as AttestationRecord;
+}
+
+/**
+ * The one record in `dir` whose digest matches.
+ *
+ * Matched on the digest the record carries, not on its file name. A file name
+ * is only an index: a record rewritten with a fresh, self-consistent digest
+ * keeps its old name, and matching on the name would hand it over as the
+ * record the reader asked for.
+ */
+export function findRecord(
+  dir: string,
+  query: DigestQuery,
+): { readonly path: string; readonly record: AttestationRecord } {
+  if (!existsSync(dir)) {
+    throw new RecordLookupError(`There are no records in ${dir}.`);
+  }
+
+  const found: { path: string; record: AttestationRecord }[] = [];
+  for (const name of readdirSync(dir).sort()) {
+    if (!name.endsWith(".json")) continue;
+    const path = join(dir, name);
+    let record: AttestationRecord;
+    try {
+      record = loadRecord(path);
+    } catch {
+      continue; // Not a record, so not a candidate.
+    }
+    if (matchesDigest(record.digest, query)) found.push({ path, record });
+  }
+
+  const [only, ...others] = found;
+  if (only === undefined) {
+    throw new RecordLookupError(`No record in ${dir} carries that digest.`);
+  }
+  if (others.length > 0) {
+    throw new RecordLookupError(
+      `${found.length} records match; give more of the digest:\n` +
+        found
+          .map((f) => `  ${f.record.digest}  ${f.record.path}  ${f.record.symbol}`)
+          .join("\n"),
+    );
+  }
+  return only;
 }
