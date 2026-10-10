@@ -20,6 +20,9 @@ pnpm verify                                          # the definition of done
 | `packages/tokens` | `tokens.json` → CSS custom properties and typed references. Generated; never hand-written. |
 | `packages/ui` | React component library. No runtime CSS-in-JS. Its React-free half is exported as `@qed/ui/model`. |
 | `packages/cli-render` | A pure function: run result in, ANSI string out. No I/O, no clock. |
+| `packages/engine` | The verifier: runs both versions of a function in a sandbox on generated inputs and returns a verdict. Reads no clock and no git. |
+| `packages/cli` | `qed check`, `qed repro`, `qed verify`. Reads the diff from git, writes the records. |
+| `examples/ledger` | The code the published run is made from: `pnpm generate:run` executes the engine over it. |
 | `apps/web` | The marketing site. Prerendered to static HTML — React runs at build time only. |
 | `apps/console` | The product shell: run, verdicts, attestations, release evidence, audit export. Typed fixtures, no network. |
 | `tests/gallery` | The component index the evidence run shoots. Never shipped. |
@@ -78,6 +81,43 @@ one, a realistic violation of the property it names that would still pass:
 | `pnpm e2e` | Playwright: evidence, flows, visual regression. |
 | `pnpm measure:fonts` | Re-measure the metric-matched fallbacks. Fails above a 1% residual shift. |
 | `pnpm build:logos` | Regenerate the typed logo module from the SVGs. |
+| `pnpm generate:run` | Re-run the engine over `examples/ledger` and rewrite the run both apps display. |
+| `pnpm qed <command>` | The CLI from source, through tsx. |
+| `pnpm build:cli` | Bundle the CLI into one file, `packages/cli/dist/qed.cjs`. |
+| `pnpm build:binary` | Wrap that into a single executable for this machine, `dist/bin/qed-<platform>-<arch>`. |
+
+## The CLI
+
+```
+pnpm qed check --base origin/main [--inputs 1000] [--tolerance float=1e-9,rel=1e-12] [--records <dir>]
+pnpm qed repro <file> <symbol> --input '<json-array>' [--base <ref>]
+pnpm qed verify --digest <sha256, or 16+ hex characters of it>
+```
+
+`check` writes one record per function to `.qed/records/`, named by digest,
+and prints every digest on stderr so the run's log keeps a copy the records
+cannot rewrite. `verify` re-derives a record's digest from its own fields with
+the same function the console's Verify button uses, and compares it with the
+one you hold. Records are not signed: the signer reads `unsigned` and the
+Rekor index `not logged` until OIDC signing and Rekor logging are built.
+
+Exit codes: 0 nothing diverged (or the record verified), 1 something diverged
+(or the record was altered), 2 the run could not start or finish.
+
+## Releasing the CLI
+
+`.github/workflows/release.yml` runs on a `v*` tag, or by hand with an existing
+tag. It builds the binary on Linux x64/arm64, macOS arm64/x64 and Windows x64,
+makes each one run a real check over `examples/ledger` and verify a record it
+wrote, and publishes them to GitHub Releases with `SHA256SUMS`. The tag must
+match `packages/cli/package.json`, because that version is the engine every
+record names.
+
+`apps/web/public/install.sh` is served from the site root. It downloads the
+binary for the machine, checks it against `SHA256SUMS`, runs it, and only then
+installs it. `QED_VERSION`, `QED_INSTALL_DIR` and `QED_DOWNLOAD_BASE` override
+the release, the destination and the source. Until a release is published, it
+has nothing to install.
 
 ## CI
 

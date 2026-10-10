@@ -37,7 +37,7 @@ export const STEPS: readonly Step[] = [
   {
     n: "02",
     title: "It generates inputs",
-    body: "Type-directed: it reads the declared parameter types and generates from them, seeded with the constants mined out of both versions — because the boundary a change moved is usually written down in the code. Both versions then run on the same inputs under the same controls: clock frozen, rng seeded, network denied, imports refused.",
+    body: "Type-directed: it reads the declared parameter types and generates from them, seeded with the constants mined out of both versions — because the boundary a change moved is usually written down in the code. Both versions then run on the same inputs under the same controls: clock frozen, rng seeded, network and timers denied, relative imports pinned to the revision being compared.",
   },
   {
     n: "03",
@@ -47,7 +47,7 @@ export const STEPS: readonly Step[] = [
   {
     n: "04",
     title: "It records what it found",
-    body: "The record carries the verdict, the input count, the controls and every tolerance applied, under a digest computed from those fields. Anyone holding the record can recompute that digest and check it has not been altered — without us, and without a network.",
+    body: "Every function gets a record: the verdict, the input count, the controls and every tolerance applied, under a digest computed from those fields. The digest is printed in the run's log, so anyone holding the record can recompute it and check it against that copy — without us, and without a network.",
   },
 ];
 
@@ -183,6 +183,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     body: [
       "One binary, no daemon. It runs the same on a laptop and on a runner.",
       "curl -fsSL https://qed.dev/install.sh | sh",
+      "The script picks the binary for your machine — Linux and macOS on x64 or arm64, Windows on x64 — checks it against the release's SHA-256 checksums, and installs nothing that does not match. QED_VERSION pins a release; QED_INSTALL_DIR changes where it goes, by default ~/.local/bin.",
     ],
   },
   {
@@ -191,13 +192,16 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     body: [
       "Point it at the branch you are merging into. It reads the diff, selects the functions it can run soundly, and prints one line per function.",
       "qed check --base origin/main",
+      "A divergence prints a repro line. It is a complete command: run it as printed to see what each version returned.",
+      "qed repro billing/ledger.ts bulkRate --input '[{\"qty\":100,\"tier\":\"gold\"}]'",
     ],
   },
   {
     id: "controls",
     title: "Determinism controls",
     body: [
-      "Both versions run under the same controls, and the record names each one. The clock is frozen, the rng is seeded, the network is denied, and a module import is refused rather than resolved — a function whose behaviour depends on another module cannot be compared in isolation unless that module is pinned too.",
+      "Both versions run under the same controls, and the record names each one. The clock is frozen, the rng is seeded, and the network and timers are denied.",
+      "A relative import is pinned: each version loads the helper from its own revision, so a change to the helper shows up as part of the change. Any other import — a package, or a Node built-in — is refused rather than resolved, because a function whose behaviour depends on another module cannot be compared in isolation unless that module is pinned too.",
       "A function that escapes a control is not run twice and averaged. It abstains, and the obstruction is printed.",
     ],
   },
@@ -205,16 +209,18 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     id: "tolerances",
     title: "Tolerances",
     body: [
-      "A float epsilon or an unordered-collection comparison weakens the claim, so every tolerance applied is printed in the attestation.",
+      "A float epsilon or an unordered-collection comparison weakens the claim. A tolerance loosens a comparison only where one needs it, and every one applied — on an equivalence as well as a divergence — is written into the record. The command line echoed at the top of the output carries it too.",
       "qed check --tolerance float=1e-9",
+      "float is an absolute difference; rel is a fraction of the larger magnitude, which is the one to use for money. Both can be given at once.",
+      "qed check --tolerance float=1e-9,rel=1e-12",
     ],
   },
   {
     id: "attestations",
     title: "Attestations",
     body: [
-      "Each verified function produces a record: the verdict, the inputs, the controls, the tolerances and the engine version, under a digest computed from exactly those fields.",
-      "Recomputing the digest proves the record has not been altered since it was written. It does not prove who wrote it — see the limits below.",
+      "Each function the run looked at produces a record in .qed/records: the verdict, the inputs, the controls, the tolerances and the engine version, under a digest computed from exactly those fields. Each digest is also printed in the run's log.",
+      "Recomputing the digest proves the record has not been altered since it was written — checked against the digest you hold, from the log, because anyone can rewrite a record and recompute a digest that matches it. A digest can be shortened to 16 hex characters, as below. It does not prove who wrote it — see the limits below.",
       "qed verify --digest sha256:9f2a1c84bd0e...7c31",
     ],
   },
@@ -222,8 +228,8 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     id: "limits",
     title: "What is not built yet",
     body: [
-      "QED is honest about its own state as well as about your code. Today the engine verifies pure TypeScript and JavaScript functions in a self-contained module — the kind of code tax, pricing and ledger rules are written in.",
-      "Not yet built: signing against a CI provider's OIDC identity, logging to Rekor, resolving imports so a function that calls another module can be compared, async functions, and coverage-guided generation. Each of those is a reason the tool abstains today rather than a claim it quietly makes.",
+      "QED is honest about its own state as well as about your code. Today the engine verifies pure TypeScript and JavaScript functions in a module and the relative imports it makes — the kind of code tax, pricing and ledger rules are written in.",
+      "Not yet built: signing against a CI provider's OIDC identity, logging to Rekor, resolving package imports, async functions, and coverage-guided generation. Each of those is a reason the tool abstains today rather than a claim it quietly makes. Records say so: their signer is \"unsigned\" and their Rekor index \"not logged\".",
       "The abstain rate on the home page is measured from a real run, not estimated.",
     ],
   },
@@ -232,8 +238,8 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     title: "Exit codes",
     body: [
       "0 - no function diverged. Abstentions are reported and do not fail the run.",
-      "1 - at least one function diverged. The counterexample is in the output and in the record.",
-      "2 - the run could not start: a bad flag, a missing base ref, or a repository it cannot read.",
+      "1 - at least one function diverged. The counterexample is in the output and in the record. For qed verify: the record has been altered.",
+      "2 - the run could not start, or could not finish: a bad flag, a missing base ref, a repository it cannot read, or a record that cannot be found.",
     ],
   },
 ];

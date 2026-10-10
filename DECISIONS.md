@@ -407,6 +407,10 @@ Async functions, coverage-guided generation, OIDC signing and Rekor logging are
 not built; each is a reason the tool abstains today rather than a claim it
 quietly makes. The marketing copy says so, in a section of its own.
 
+*Since narrowed:* a relative import is now pinned to the revision being
+compared rather than refused, so a function that calls a local helper can be
+verified. Package and built-in imports are still refused.
+
 ### D-039 · The published numbers come from a real run
 
 `pnpm generate:run` executes the engine over `examples/ledger` and writes
@@ -435,3 +439,59 @@ Two classes with identical fields used to compare equal, so a change from
 `Money` to `Cash` read as EQUIVALENT while any caller doing `instanceof` broke.
 The comparator now reports `a Money became a Cash`, and `show` names the class
 it prints - without which the counterexample read `{ cents: 0 }` on both sides.
+
+---
+
+## The CLI catches up with its docs
+
+### D-042 · Every tolerance an equivalence leaned on is recorded
+
+Only a divergence recorded the tolerances `equals` reported; an agreement threw
+them away. With `--tolerance` wired in, an EQUIVALENT that held only because of
+a float epsilon would have said "none applied". Every comparison a verdict
+rests on now records what it applied, including the determinism checks: an
+epsilon that absorbs clock drift is a tolerance applied too.
+
+### D-043 · The digest covers the whole verdict
+
+`canonicalRecord` signed only a DIVERGED verdict's repro line, so the printed
+input and both results could be edited under a digest that still matched. The
+whole counterexample is now signed, JSON-encoded so no field can move text into
+the next, and so is an EQUIVALENT's strategy. The console fixture's digest was
+recomputed for the new form; the deliberately wrong one stays wrong.
+
+### D-044 · A record is checked against a digest held elsewhere
+
+Anyone can rewrite a record and recompute a digest that matches it, so
+re-deriving a digest only proves something against a copy the record cannot
+reach. `qed check` prints every digest on stderr, into the run's log;
+`qed verify --digest` matches the digest *inside* each record, never the file
+name a rewrite would keep; an abbreviation needs 16 hex characters, about 2^64
+attempts to forge; and a file verified without a held digest is reported as
+consistent with itself, and no more.
+
+### D-045 · Records say they are unsigned
+
+OIDC signing and Rekor logging are not built. A record's `signer` reads
+`unsigned` and its `rekorIndex` `not logged`, rather than being left empty for a
+reader to fill in, and `qed verify` names both as unchecked. A record written
+over uncommitted edits names its commit `<sha>+uncommitted`, because the run
+read the working tree, not the commit.
+
+### D-046 · Exit 2 for anything that is not an answer
+
+Exit 1 means "something diverged", and CI acts on it. Unknown flags used to be
+ignored, so `--tolerence float=1e-9` ran an exact comparison and passed. Every
+command now declares its flags, and an unknown flag, a malformed value, a base
+ref that names no commit, a missing record and a crash all exit 2.
+
+### D-047 · One binary is a Node single-executable application
+
+The docs promise "one binary, no daemon". The CLI is bundled with esbuild into
+one CommonJS file, including the TypeScript compiler the engine reads source
+with, and injected into a copy of Node. That is about 90MB, almost all of it
+Node, and needs nothing installed. Each platform's binary is built on that
+platform by `release.yml`, and must run a real check before it is published.
+`install.sh` installs nothing whose SHA-256 does not match the release's
+`SHA256SUMS`, or that does not run.
+
