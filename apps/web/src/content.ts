@@ -32,12 +32,12 @@ export const STEPS: readonly Step[] = [
   {
     n: "01",
     title: "It reads the diff",
-    body: "Every function the change touches, and the version it replaces. Nothing else is examined, so a large pull request is not a large run.",
+    body: "Every function the change touches, and the version it replaces — and every function in an unchanged file that imports a changed one, because a helper that moved changes what its callers return. Nothing else is examined, so a large pull request is not a large run.",
   },
   {
     n: "02",
     title: "It generates inputs",
-    body: "Type-directed: it reads the declared parameter types and generates from them, seeded with the constants mined out of both versions — because the boundary a change moved is usually written down in the code. Both versions then run on the same inputs under the same controls: clock frozen, rng seeded, network, timers, crypto and the high-resolution clock denied, relative imports pinned to the revision being compared.",
+    body: "Type-directed: the TypeScript checker resolves each parameter's type — imported interfaces, Partial and Record, branded numbers, dates, maps, callbacks — and inputs are generated from it, seeded with the constants mined out of both versions and the files they import, because the boundary a change moved is usually written down in the code. Both versions then run on the same inputs under the same controls: clock frozen, rng seeded, network, timers, crypto and the high-resolution clock denied, relative imports pinned to the revision being compared.",
   },
   {
     n: "03",
@@ -229,7 +229,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     title: "What is not built yet",
     body: [
       "QED is honest about its own state as well as about your code. Today the engine verifies pure TypeScript and JavaScript functions in a module and the relative imports it makes — the kind of code tax, pricing and ledger rules are written in.",
-      "Not yet built: signing against a CI provider's OIDC identity, logging to Rekor, resolving package imports, async functions, and coverage-guided generation. Each of those is a reason the tool abstains today rather than a claim it quietly makes. Records say so: their signer is \"unsigned\" and their Rekor index \"not logged\".",
+      "Not yet built: signing against a CI provider's OIDC identity, logging to Rekor, resolving package imports, async functions, recursive parameter types, and coverage-guided generation. A package import is refused only by the functions that use it. Each of those is a reason the tool abstains today rather than a claim it quietly makes. Records say so: their signer is \"unsigned\" and their Rekor index \"not logged\".",
       "The abstain rate on the home page is measured from a real run, not estimated.",
     ],
   },

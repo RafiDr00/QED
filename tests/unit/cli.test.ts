@@ -109,9 +109,14 @@ describe("qed check", () => {
   });
 
   it("verifies a function through a pinned relative import", () => {
-    // pricing/total.ts did not change; it is not in the diff. Its helper did.
     // The helper itself is compared, and diverges at the boundary it moved.
     expect(run.stdout).toMatch(/DIVERGED\s+pricing\/rate\.ts\s+rate/);
+  });
+
+  it("verifies the unchanged file that imports a changed one, and says why it is there", () => {
+    // pricing/total.ts did not change; it is not in the diff. Its helper did,
+    // so what total() returns did too.
+    expect(run.stdout).toMatch(/DIVERGED\s+pricing\/total\.ts\s+total\s+via pricing\/rate\.ts/);
   });
 
   it("writes one record per function, and prints each digest", () => {

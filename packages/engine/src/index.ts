@@ -5,3 +5,4 @@ export * from "./generate.js";
 export * from "./verify.js";
 export * from "./blast.js";
 export * from "./run.js";
+export * from "./exports.js";

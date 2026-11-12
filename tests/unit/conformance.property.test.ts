@@ -69,7 +69,9 @@ const numbers = fc.oneof(
 );
 
 describe("the sandbox agrees with the host", () => {
-  it("for every expression, on every input", () => {
+  // CPU-bound: a fresh sandbox per case. Alone it takes about two seconds;
+  // beside the type-checking suites it can take three times that.
+  it("for every expression, on every input", { timeout: 30_000 }, () => {
     fc.assert(
       fc.property(
         fc.constantFrom(...EXPRESSIONS),

@@ -74,9 +74,34 @@ describe("what it refuses, and what it says", () => {
     });
   }
 
-  it("refuses a module import rather than resolving it", () => {
-    expect(() => load(`import { readFileSync } from "node:fs";\nexport function f(): unknown { return readFileSync("/etc/passwd"); }`))
+  it("refuses a module import where it is used, rather than resolving it", () => {
+    const s = load(`import { readFileSync } from "node:fs";\nexport function f(): unknown { return readFileSync("/etc/passwd"); }`);
+    expect(callFunction(s, "f", []).obstruction).toBe("imports node:fs");
+  });
+
+  it("lets a function that never touches the import run", () => {
+    // One unused import used to make every function in the file abstain.
+    const s = load(`import { readFileSync } from "node:fs";
+export function add(a: number, b: number): number { return a + b; }
+export function read(p: string): string { return readFileSync(p, "utf8"); }`);
+    expect(callFunction(s, "add", [2, 3])).toEqual({ kind: "returned", value: 5 });
+    expect(callFunction(s, "read", ["/x"]).obstruction).toBe("imports node:fs");
+  });
+
+  it("refuses an import used while the module loads, at load", () => {
+    expect(() => load(`import { sep } from "node:path";\nconst SEP = sep;\nexport function f(): string { return SEP; }`))
       .toThrow(ObstructionError);
+  });
+
+  it("refuses a default and a namespace import where they are used", () => {
+    const s = load(`import fs from "node:fs";
+import * as path from "node:path";
+export function a(): unknown { return fs.existsSync("/"); }
+export function b(): unknown { return path.join("a", "b"); }
+export function c(n: number): number { return n; }`);
+    expect(callFunction(s, "a", []).obstruction).toBe("imports node:fs");
+    expect(callFunction(s, "b", []).obstruction).toBe("imports node:path");
+    expect(callFunction(s, "c", [1])).toEqual({ kind: "returned", value: 1 });
   });
 
   it("sees an empty environment", () => {

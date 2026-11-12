@@ -4,7 +4,35 @@ Every change that alters what `qed` does, what it claims, or what a record
 contains. The version a record names as its engine is the one in
 `packages/cli/package.json`, and a release tag must match it.
 
-## 0.1.0 (unreleased)
+## 0.2.0 (unreleased)
+
+QED now verifies the shapes ordinary TypeScript is written in, and checks
+itself. Every case is in `tests/unit/coverage.test.ts`.
+
+- Parameter types are resolved by the TypeScript checker. Imported interfaces,
+  `Partial`, `Pick`, `Omit`, `Record`, intersections, branded numbers, `Date`,
+  `Map`, `Set`, typed arrays, readonly arrays, template literal types and
+  constrained type parameters all generate. A refusal names where in the
+  parameter it happened.
+- Callbacks generate. A callback records its calls, and the calls are compared
+  along with the result.
+- `export { a, b as c }` and `export default` are verified. A default export
+  appears as `default`.
+- A package import blocks only the functions that use it.
+- `qed check` verifies unchanged files that import a changed one, marked
+  `via <file>`. Constants are mined from pinned imports too.
+- Imports written as `./file.js` resolve to `file.ts`. `.tsx` modules load.
+- A function that never returns abstains after a minute instead of hanging
+  the run.
+- An async function that rejects no longer crashes the run.
+- The description of where a change bites names only values the code names,
+  and needs at least three diverging inputs.
+- Gate G11: QED verifies every exported function in its own packages against
+  itself. None may diverge, and the count verified may not fall.
+- Repeated `git show` calls for imports are gone. A check over a changed
+  helper went from two minutes to under a second.
+
+## 0.1.0 (2026-11-12)
 
 The first release: the engine, the CLI, the records, and the surfaces that
 show them.

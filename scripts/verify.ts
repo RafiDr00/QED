@@ -1,7 +1,7 @@
 /**
  * `pnpm verify` - the definition of done.
  *
- * Ten gates, machine-checked. Each lives in its own file under gates/ with the
+ * Eleven gates, machine-checked. Each lives in its own file under gates/ with the
  * reasoning for its exemptions beside it; this file only decides what to run
  * and reports what came back.
  *
@@ -22,6 +22,7 @@ import { gate as g7 } from "./gates/g7-verdicts.ts";
 import { gate as g8 } from "./gates/g8-a11y.ts";
 import { gate as g9 } from "./gates/g9-budget.ts";
 import { gate as g10 } from "./gates/g10-print.ts";
+import { gate as g11 } from "./gates/g11-dogfood.ts";
 
 const root = process.cwd();
 
@@ -38,7 +39,7 @@ const fail = (failures: string[]): GateResult => ({
   failures,
 });
 
-const gates: Gate[] = [g1, g2, g3, g4, g5, g6, g7, g8, g9, g10];
+const gates: Gate[] = [g1, g2, g3, g4, g5, g6, g7, g8, g9, g10, g11];
 
 function run(label: string, command: string, commandArgs: string[]): boolean {
   process.stdout.write(`\n  -> ${label}: ${command} ${commandArgs.join(" ")}\n`);

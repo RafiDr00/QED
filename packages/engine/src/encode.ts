@@ -14,7 +14,93 @@
  * Everything the generator can produce round-trips through here.
  */
 
-type Tagged = { readonly $: string; readonly v?: unknown };
+type Tagged = { readonly $: string; readonly v?: unknown; readonly t?: string };
+
+/* ------------------------------------------------------------------------ */
+/* Generated callbacks                                                      */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * A function the generator made for a function-typed parameter.
+ *
+ * It returns a fixed value - a fresh copy each call, so one call's caller
+ * cannot mutate what the next receives - and it records every call it
+ * receives. The calls are part of the outcome: a version that calls back
+ * twice where the other calls once has changed what a caller sees, even if
+ * both return the same thing. DECISIONS.md D-053.
+ */
+interface Callback {
+  /** What every call returns, encoded. */
+  readonly returns: unknown;
+  /** The arguments of every call, in order. */
+  readonly calls: unknown[][];
+}
+
+const CALLBACKS = new WeakMap<object, Callback>();
+
+function callbackFromEncoded(returns: unknown): (...args: unknown[]) => unknown {
+  const calls: unknown[][] = [];
+  const fn = function (...args: unknown[]): unknown {
+    calls.push(args);
+    return decodeValue(returns);
+  };
+  const shown = JSON.stringify(returns);
+  Object.defineProperty(fn, "name", {
+    value: `returning ${shown === '{"$":"undefined"}' ? "undefined" : shown}`,
+  });
+  CALLBACKS.set(fn, { returns, calls });
+  return fn;
+}
+
+/** A callback that returns `value` on every call and records each one. */
+export function makeCallback(value: unknown): (...args: unknown[]) => unknown {
+  return callbackFromEncoded(encodeValue(value, 0));
+}
+
+/**
+ * The calls every generated callback inside `args` received, in the order
+ * the callbacks appear in the arguments. Undefined when there are none, so
+ * a function without callbacks has an outcome exactly as before.
+ */
+export function callbacksIn(args: readonly unknown[]): unknown[][][] | undefined {
+  const found: unknown[][][] = [];
+  const seen = new Set<unknown>();
+  const visit = (value: unknown): void => {
+    if (typeof value === "function") {
+      const callback = CALLBACKS.get(value);
+      if (callback) found.push(callback.calls);
+      return;
+    }
+    if (typeof value !== "object" || value === null || seen.has(value)) return;
+    seen.add(value);
+    if (value instanceof Map) {
+      for (const [k, v] of value) {
+        visit(k);
+        visit(v);
+      }
+    } else if (value instanceof Set || Array.isArray(value)) {
+      for (const item of value as Iterable<unknown>) visit(item);
+    } else {
+      for (const inner of Object.values(value)) visit(inner);
+    }
+  };
+  args.forEach(visit);
+  return found.length > 0 ? found : undefined;
+}
+
+const TYPED_ARRAYS: Readonly<Record<string, new (values: ArrayLike<unknown>) => unknown>> = {
+  Int8Array: Int8Array,
+  Uint8Array: Uint8Array,
+  Uint8ClampedArray: Uint8ClampedArray,
+  Int16Array: Int16Array,
+  Uint16Array: Uint16Array,
+  Int32Array: Int32Array,
+  Uint32Array: Uint32Array,
+  Float32Array: Float32Array,
+  Float64Array: Float64Array,
+  BigInt64Array: BigInt64Array,
+  BigUint64Array: BigUint64Array,
+};
 
 function encodeValue(value: unknown, depth: number): unknown {
   if (depth > 12) return { $: "depth" } satisfies Tagged;
@@ -32,8 +118,21 @@ function encodeValue(value: unknown, depth: number): unknown {
   if (typeof value === "bigint") {
     return { $: "bigint", v: value.toString() } satisfies Tagged;
   }
+  if (typeof value === "function") {
+    // Only the generator puts functions in arguments, and it registers each.
+    const callback = CALLBACKS.get(value);
+    return { $: "fn", v: callback ? callback.returns : { $: "undefined" } } satisfies Tagged;
+  }
   if (value === null || typeof value !== "object") return value;
 
+  if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
+    const name = value.constructor.name;
+    return {
+      $: "typed",
+      t: name,
+      v: [...(value as unknown as Iterable<unknown>)].map((item) => encodeValue(item, depth + 1)),
+    } satisfies Tagged;
+  }
   if (value instanceof Date) {
     return { $: "Date", v: value.getTime() } satisfies Tagged;
   }
@@ -101,6 +200,13 @@ function decodeValue(value: unknown): unknown {
           decodeValue(v),
         ]),
       );
+    case "fn":
+      return callbackFromEncoded(tag.v);
+    case "typed": {
+      const Typed = TYPED_ARRAYS[String(tag.t)];
+      if (Typed === undefined) break;
+      return new Typed((tag.v as unknown[]).map(decodeValue));
+    }
     case "object":
       // Decode the entries, not the wrapper: running decodeValue on the inner
       // object would read its own "$" key as a tag again and turn an escaped
@@ -122,4 +228,17 @@ export function decodeArgs(text: string): unknown[] {
   const parsed: unknown = JSON.parse(text);
   if (!Array.isArray(parsed)) throw new Error("expected a JSON array");
   return parsed.map(decodeValue);
+}
+
+/**
+ * A fresh copy of an argument list, made through the repro encoding.
+ *
+ * Every call gets its own copy, so a function that mutates its input cannot
+ * hand the next call a different one. Copying through the encoding rather
+ * than with `structuredClone` keeps generated callbacks, which
+ * `structuredClone` refuses, and means the arguments a call ran with are
+ * exactly what its repro line reproduces.
+ */
+export function cloneArgs(args: readonly unknown[]): unknown[] {
+  return args.map((arg) => decodeValue(encodeValue(arg, 0)));
 }

@@ -1,6 +1,7 @@
 import ts from "typescript";
 import type { FunctionRun, RunResult } from "@qed/ui/model";
 
+import { exportedFunctionsOf } from "./exports.js";
 import type { Resolver } from "./sandbox.js";
 import { verify, type VerifyOptions, type VerifyResult } from "./verify.js";
 
@@ -14,45 +15,17 @@ export interface ModulePair {
   readonly path: string;
   readonly base: string;
   readonly head: string;
+  /**
+   * The changed file this one imports, when it is in the run only because
+   * of that import. Its own text did not change; what it calls did.
+   */
+  readonly via?: string;
 }
 
-/** Exported function names, in source order. */
+/** Exported function names, in source order, however they are exported. */
 export function exportedFunctions(source: string, fileName: string): string[] {
-  const file = ts.createSourceFile(
-    fileName,
-    source,
-    ts.ScriptTarget.ES2022,
-    true,
-  );
-  const names: string[] = [];
-
-  const exported = (node: ts.Node): boolean =>
-    ts.canHaveModifiers(node) &&
-    (ts.getModifiers(node) ?? []).some(
-      (m) => m.kind === ts.SyntaxKind.ExportKeyword,
-    );
-
-  for (const statement of file.statements) {
-    if (
-      ts.isFunctionDeclaration(statement) &&
-      statement.name &&
-      exported(statement)
-    ) {
-      names.push(statement.name.text);
-    } else if (ts.isVariableStatement(statement) && exported(statement)) {
-      for (const decl of statement.declarationList.declarations) {
-        if (
-          ts.isIdentifier(decl.name) &&
-          decl.initializer &&
-          (ts.isArrowFunction(decl.initializer) ||
-            ts.isFunctionExpression(decl.initializer))
-        ) {
-          names.push(decl.name.text);
-        }
-      }
-    }
-  }
-  return names;
+  const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.ES2022, true);
+  return exportedFunctionsOf(file).map((f) => f.name);
 }
 
 export interface RunOptions extends VerifyOptions {
@@ -95,14 +68,38 @@ function normalise(path: string): string {
 export function relativeResolver(
   read: (path: string) => string | undefined,
 ): Resolver {
+  // A revision does not change during a run, and every call re-runs the
+  // module, so every call resolved its imports again. Unremembered, each of
+  // those was a `git show` per candidate extension - minutes of process
+  // spawning for one function, enough to run it past its budget.
+  const files = new Map<string, string | undefined>();
+  const cachedRead = (path: string): string | undefined => {
+    if (!files.has(path)) files.set(path, read(path));
+    return files.get(path);
+  };
+  const resolved = new Map<string, { readonly path: string; readonly source: string } | undefined>();
+
   return (specifier, fromFile) => {
     const joined = normalise(`${dirOf(fromFile)}/${specifier}`);
-    for (const extension of EXTENSIONS) {
-      const candidate = `${joined}${extension}`;
-      const source = read(candidate);
-      if (source !== undefined) return { path: candidate, source };
+    if (resolved.has(joined)) return resolved.get(joined);
+    let found: { readonly path: string; readonly source: string } | undefined;
+    // `./verdict.js` names the file `verdict.ts` compiles to; TypeScript's
+    // own resolver reads the `.ts` first, and so does this. Without it every
+    // import written in the ESM style was "not pinned".
+    const script = /\.(m|c)?jsx?$/.exec(joined);
+    const swapped =
+      script === null
+        ? []
+        : [`${joined.slice(0, script.index)}${script[0].replace("js", "ts")}`];
+    for (const candidate of [...swapped, ...EXTENSIONS.map((e) => `${joined}${e}`)]) {
+      const source = cachedRead(candidate);
+      if (source !== undefined) {
+        found = { path: candidate, source };
+        break;
+      }
     }
-    return undefined;
+    resolved.set(joined, found);
+    return found;
   };
 }
 
@@ -126,6 +123,13 @@ export function runPair(
   const details = new Map<string, VerifyResult>();
   let changed = 0;
 
+  // One resolver per side for the whole run, so a file is read once and the
+  // type checker's program for a module is built once, not once per function.
+  const resolvers = {
+    ...(options.readBase ? { resolveBase: relativeResolver(options.readBase) } : {}),
+    ...(options.readHead ? { resolveHead: relativeResolver(options.readHead) } : {}),
+  };
+
   for (const module of modules) {
     const baseNames = exportedFunctions(module.base, module.path);
     const headNames = new Set(exportedFunctions(module.head, module.path));
@@ -134,10 +138,12 @@ export function runPair(
       changed++;
       const key = `${module.path}:${symbol}`;
 
+      const via = module.via === undefined ? {} : { via: module.via };
       if (!headNames.has(symbol)) {
         runs.push({
           path: module.path,
           symbol,
+          ...via,
           verdict: {
             state: "ABSTAINED",
             obstruction: "is no longer exported, so there is nothing to compare",
@@ -155,16 +161,11 @@ export function runPair(
         },
         {
           ...options,
-          ...(options.readBase
-            ? { resolveBase: relativeResolver(options.readBase) }
-            : {}),
-          ...(options.readHead
-            ? { resolveHead: relativeResolver(options.readHead) }
-            : {}),
+          ...resolvers,
         },
       );
       details.set(key, outcome);
-      runs.push({ path: module.path, symbol, verdict: outcome.verdict });
+      runs.push({ path: module.path, symbol, ...via, verdict: outcome.verdict });
     }
   }
 
