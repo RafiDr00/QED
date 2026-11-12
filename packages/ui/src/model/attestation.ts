@@ -99,6 +99,59 @@ export function canonicalRecord(record: AttestationRecord): string {
 }
 
 /**
+ * What a Sigstore signature covers: every field of the record except the two
+ * the signature itself produces.
+ *
+ * Who signed and where it was logged are only known once signing is done -
+ * the identity is in the certificate Fulcio issues, the log index in the
+ * entry Rekor returns - so they cannot be inside what was signed. They are
+ * checked against the verified bundle instead, and the digest covers them
+ * along with everything else. DECISIONS.md D-059.
+ */
+export function signingPayload(record: AttestationRecord): string {
+  return canonicalRecord({ ...record, signer: "", rekorIndex: "" });
+}
+
+async function sha256Hex(text: string): Promise<string> {
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** The record as a run's signature names it: `sha256:` of its signing payload. */
+export async function signingSubject(record: AttestationRecord): Promise<string> {
+  return `sha256:${await sha256Hex(signingPayload(record))}`;
+}
+
+/** The kind a signed run manifest declares, so no other JSON can pass for one. */
+export const RUN_MANIFEST_KIND = "qed.run/v1";
+
+/**
+ * The text one run's signature covers: every record's subject, sorted.
+ *
+ * One signature per run rather than per record. Each signature costs a
+ * certificate from Fulcio and an entry in Rekor's public log; a run of
+ * thirty functions would have made thirty of each, for one CI job's single
+ * identity.
+ */
+export function runManifest(subjects: readonly string[]): string {
+  return JSON.stringify({ kind: RUN_MANIFEST_KIND, subjects: [...new Set(subjects)].sort() });
+}
+
+/** The subjects a manifest lists, or undefined if the text is not a manifest. */
+export function manifestSubjects(text: string): readonly string[] | undefined {
+  try {
+    const parsed = JSON.parse(text) as { kind?: unknown; subjects?: unknown };
+    if (parsed.kind !== RUN_MANIFEST_KIND || !Array.isArray(parsed.subjects)) return undefined;
+    if (!parsed.subjects.every((s) => typeof s === "string")) return undefined;
+    // Only the exact canonical form: a manifest is matched as signed bytes.
+    const subjects: readonly string[] = parsed.subjects;
+    return runManifest(subjects) === text ? subjects : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Re-derives the record's digest from its own signed fields.
  *
  * "Verify is a real action. The button re-derives the verdict from the record

@@ -1,14 +1,24 @@
 {
   "name": "@qed/cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "bin": { "qed": "./src/main.ts" },
+  "bin": {
+    "qed": "./src/main.ts"
+  },
   "main": "./src/main.ts",
-  "exports": { ".": "./src/main.ts" },
+  "exports": {
+    ".": "./src/main.ts"
+  },
   "dependencies": {
     "@qed/cli-render": "workspace:*",
     "@qed/engine": "workspace:*",
-    "@qed/ui": "workspace:*"
+    "@qed/ui": "workspace:*",
+    "@sigstore/bundle": "^5.0.1",
+    "@sigstore/core": "^4.0.0",
+    "@sigstore/protobuf-specs": "^0.5.2",
+    "@sigstore/tuf": "^5.0.1",
+    "@sigstore/verify": "^4.1.3",
+    "sigstore": "^5.0.1"
   }
 }

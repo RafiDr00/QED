@@ -2,7 +2,8 @@ name: release
 
 # Builds the qed binary on every platform it ships for, proves each one runs a
 # real check, and publishes them with the SHA256SUMS that install.sh checks
-# every download against.
+# every download against - signed with Sigstore as this workflow, so the
+# checksums themselves can be checked.
 #
 # Runs on a v* tag, or by hand with the tag to publish. Nothing here runs on an
 # ordinary push. The tag must match packages/cli/package.json, because that
@@ -105,6 +106,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      # Lets this job's own identity be certified by Fulcio to sign SHA256SUMS.
+      id-token: write
 
     steps:
       - uses: actions/download-artifact@v4
@@ -119,6 +122,19 @@ jobs:
           sha256sum qed-* > SHA256SUMS
           cat SHA256SUMS
           test "$(wc -l < SHA256SUMS)" = 5
+
+      - uses: sigstore/cosign-installer@v3
+
+      # install.sh checks this signature before it trusts any checksum, and
+      # requires it to come from this workflow, run for a v* tag.
+      - name: Sign SHA256SUMS
+        working-directory: release
+        run: |
+          cosign sign-blob --yes --bundle SHA256SUMS.sigstore.json SHA256SUMS
+          cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+            --certificate-identity-regexp "^https://github\.com/${GITHUB_REPOSITORY}/\.github/workflows/release\.yml@refs/tags/v" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            SHA256SUMS
 
       - name: Publish the release
         env:

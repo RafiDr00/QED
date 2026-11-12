@@ -20,7 +20,8 @@
     "qed": "tsx packages/cli/src/main.ts",
     "generate:run": "tsx scripts/generate-run.ts",
     "build:cli": "pnpm build:tokens && tsx scripts/build-cli.ts",
-    "build:binary": "pnpm build:cli && tsx scripts/build-binary.ts"
+    "build:binary": "pnpm build:cli && tsx scripts/build-binary.ts",
+    "refresh:trusted-root": "tsx packages/cli/scripts/refresh-trusted-root.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.1",

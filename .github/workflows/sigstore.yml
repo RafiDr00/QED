@@ -1,0 +1,116 @@
+name: sigstore
+
+# Signs a real run with this job's own OIDC identity, logs it in Rekor, and
+# checks the signature with the network switched off.
+#
+# This is the end-to-end test the unit suite cannot be: Fulcio only certifies
+# a real identity, and this job is one. tests/unit/signing.test.ts covers the
+# offline verifier against a real public bundle and the record binding against
+# a stand-in; this covers the two meeting, with the binary that ships.
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Lets the job ask GitHub for an OIDC token, which Fulcio certifies.
+  id-token: write
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the binary
+        run: pnpm build:binary
+
+      - name: Sign a real run
+        run: |
+          bin="$GITHUB_WORKSPACE/dist/bin/qed-linux-x64"
+          repo="$RUNNER_TEMP/smoke"
+          mkdir -p "$repo/billing"
+          cp examples/ledger/base.ts "$repo/billing/ledger.ts"
+          cd "$repo"
+          git init -q
+          git -c user.email=ci@example.invalid -c user.name=ci add -A
+          git -c user.email=ci@example.invalid -c user.name=ci commit -qm base
+          cp "$GITHUB_WORKSPACE/examples/ledger/head.ts" billing/ledger.ts
+
+          # The ledger example diverges by design, so a working run exits 1.
+          set +e
+          "$bin" check --base HEAD --no-color --sign > out.txt 2> err.txt
+          code=$?
+          set -e
+          cat out.txt err.txt
+          test "$code" = 1
+
+          identity="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/sigstore.yml@${GITHUB_REF}"
+          grep -qF "signed as $identity" err.txt
+          ls .qed/records/run-*.sigstore.json
+
+          {
+            echo "SMOKE=$repo"
+            echo "IDENTITY=$identity"
+            echo "DIGEST=$(grep -m1 -o 'sha256:[0-9a-f]\{64\}' err.txt)"
+          } >> "$GITHUB_ENV"
+
+      - name: Verify it with the network switched off
+        run: |
+          cd "$SMOKE"
+          sudo unshare --net -- "$GITHUB_WORKSPACE/dist/bin/qed-linux-x64" \
+            verify --digest "$DIGEST" --signer "$IDENTITY" | tee verify.txt
+          grep -qF "Signed by $IDENTITY" verify.txt
+          grep -q "Rekor log index" verify.txt
+          grep -q "checked offline" verify.txt
+
+      - name: Refuse a different signer
+        run: |
+          cd "$SMOKE"
+          set +e
+          "$GITHUB_WORKSPACE/dist/bin/qed-linux-x64" verify --digest "$DIGEST" \
+            --signer "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/v9.9.9" \
+            > wrong.txt
+          code=$?
+          set -e
+          cat wrong.txt
+          test "$code" = 1
+
+      - name: Refuse a tampered signed run
+        run: |
+          cd "$SMOKE/.qed/records"
+          run="$(ls run-*.sigstore.json)"
+          # Flip one character of one subject in the signed manifest.
+          node -e '
+            const fs = require("fs");
+            const file = process.argv[1];
+            const run = JSON.parse(fs.readFileSync(file, "utf8"));
+            run.payload = run.payload.replace(/sha256:([0-9a-f])/, (m, c) => "sha256:" + (c === "0" ? "1" : "0"));
+            fs.writeFileSync(file, JSON.stringify(run));
+          ' "$run"
+          cd "$SMOKE"
+          set +e
+          "$GITHUB_WORKSPACE/dist/bin/qed-linux-x64" verify --digest "$DIGEST" > tampered.txt
+          code=$?
+          set -e
+          cat tampered.txt
+          test "$code" = 1
+          grep -q "mismatch" tampered.txt

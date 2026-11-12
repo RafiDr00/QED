@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import { renderRun, exitCodeFor } from "@qed/cli-render";
 import { verifyRecord, type AttestationRecord } from "@qed/ui/model";
@@ -50,7 +50,17 @@ import {
   writeRecords,
   DEFAULT_RECORDS_DIR,
   RecordLookupError,
+  UNSIGNED,
 } from "./records.js";
+import {
+  checkSignature,
+  loadTrustedRoot,
+  oidcAvailable,
+  sealRecords,
+  writeSignedRun,
+  EMBEDDED_ROOT,
+  SigningError,
+} from "./signing.js";
 import { ENGINE } from "./version.js";
 
 /**
@@ -64,21 +74,27 @@ import { ENGINE } from "./version.js";
 const USAGE = `qed - deterministic verification
 
   qed check [--base <ref>] [--inputs <n>] [--tolerance float=<e>,rel=<e>]
-            [--records <dir>] [--no-color]
+            [--records <dir>] [--no-color] [--sign]
       Verify every exported function that changed against <ref>, and write
       one record per function to <dir> (default .qed/records). A tolerance
       loosens a comparison only where one needs it, and every one applied
       is written into the record.
+      --sign signs the run with Sigstore under this job's OIDC identity and
+      logs it in Rekor. It needs GitHub Actions with id-token: write, or a
+      token in SIGSTORE_ID_TOKEN.
       Exits 1 only when something diverged; 2 when the run could not start.
 
   qed repro <file> <symbol> --input '<json-array>' [--base <ref>]
       Run one input through both versions and print what each returned.
 
-  qed verify --digest <sha256> [--records <dir>]
-  qed verify <record.json> [--digest <sha256>]
+  qed verify --digest <sha256> [--records <dir>] [--signer <identity>]
+             [--trusted-root <file>]
+  qed verify <record.json> [--digest <sha256>] [--signer <identity>]
       Re-derive a record's digest from its own fields and compare it with the
       digest you hold. The digest may be abbreviated: 9f2a1c84bd0e...7c31.
-      Exits 1 when the record has been altered.
+      A signed record's signature, certificate and Rekor inclusion proof are
+      checked too, offline. --signer requires that exact signing identity.
+      Exits 1 when the record has been altered or its signature fails.
 
   qed --help
 `;
@@ -162,6 +178,16 @@ async function check(flags: Flags): Promise<number> {
   const cwd = process.cwd();
   resolveRef(ref, repositoryRoot(cwd));
 
+  // Refuse before the run, not after it: finding out at the end that the
+  // records cannot be signed would waste the run and leave unsigned ones.
+  const signing = flags.switches.has("sign");
+  if (signing && !oidcAvailable()) {
+    throw new SigningError(
+      "qed check --sign needs an OIDC identity to sign with. Run it in GitHub Actions " +
+        "with `permissions: id-token: write`, or put a token in SIGSTORE_ID_TOKEN.",
+    );
+  }
+
   const startedAt = new Date();
   const started = startedAt.getTime();
   const pairs = gather(ref, cwd);
@@ -194,13 +220,26 @@ async function check(flags: Flags): Promise<number> {
     timestamp: formatUtc(startedAt),
     engine: ENGINE,
   };
-  const records = await Promise.all(
+  const built = await Promise.all(
     result.runs.map((r) =>
       buildRecord(r, run.details.get(`${r.path}:${r.symbol}`), context),
     ),
   );
   const flagged = flags.named.get("records");
   const dir = flagged !== undefined ? resolve(cwd, flagged) : join(root, DEFAULT_RECORDS_DIR);
+
+  let records = built;
+  let signedNote = "";
+  if (signing) {
+    const sealed = await sealRecords(built);
+    records = sealed.records;
+    mkdirSync(dir, { recursive: true });
+    const runFile = writeSignedRun(dir, sealed.run);
+    signedNote =
+      `signed as ${sealed.facts.identity}\n` +
+      `  issuer ${sealed.facts.issuer}, Rekor log index ${sealed.facts.logIndex}\n` +
+      `  signature bundle ${shown(cwd, runFile)}\n`;
+  }
   writeRecords(dir, records);
 
   process.stdout.write(renderRun(result, { color }));
@@ -212,7 +251,8 @@ async function check(flags: Flags): Promise<number> {
     `${records.length} ${records.length === 1 ? "record" : "records"} written to ${shown(cwd, dir)}
 ` +
       records.map((r) => `  ${r.digest}  ${r.path}  ${r.symbol}
-`).join(""),
+`).join("") +
+      signedNote,
   );
   return exitCodeFor(result);
 }
@@ -365,12 +405,19 @@ async function verifyCommand(flags: Flags): Promise<number> {
   const query = raw !== undefined ? parseDigestQuery(raw) : undefined;
   const cwd = process.cwd();
 
+  const trustedRootPath = flags.named.get("trusted-root");
+  const root = trustedRootPath !== undefined ? loadTrustedRoot(resolve(cwd, trustedRootPath)) : EMBEDDED_ROOT;
+  const expectedIdentity = flags.named.get("signer");
+
   let record: AttestationRecord;
+  /** Where a signed run that lists this record would be. */
+  let searched: string[];
   if (file !== undefined) {
     if (!existsSync(resolve(cwd, file))) {
       throw new RecordLookupError(`${file} does not exist.`);
     }
     record = loadRecord(resolve(cwd, file));
+    searched = [dirname(resolve(cwd, file))];
   } else if (query !== undefined) {
     const flagged = flags.named.get("records");
     let dir: string;
@@ -385,6 +432,7 @@ async function verifyCommand(flags: Flags): Promise<number> {
       }
     }
     record = findRecord(dir, query).record;
+    searched = [dir];
   } else {
     throw new UsageError("qed verify needs --digest, a record file, or both.");
   }
@@ -403,7 +451,29 @@ async function verifyCommand(flags: Flags): Promise<number> {
 
   const state = await verifyRecord(record, new Date());
   switch (state.status) {
-    case "verified":
+    case "verified": {
+      // The digest holds; now who signed it, if anyone claims to have.
+      const signature = await checkSignature(record, searched, {
+        unsigned: UNSIGNED,
+        root,
+        ...(expectedIdentity !== undefined ? { expectedIdentity } : {}),
+      });
+      if (signature.status === "mismatch") {
+        out(`mismatch  ${record.digest}`);
+        out(subject);
+        out(`  The digest re-derives, but the signature does not hold up.`);
+        out(`  ${signature.detail}`);
+        out("  Do not rely on it.");
+        return 1;
+      }
+      if (signature.status === "missing") {
+        process.stderr.write(
+          `The record names its signer as ${record.signer}, but no signed run listing it is in ` +
+            `${signature.searched.join(", ")}. Its signature cannot be checked.\n`,
+        );
+        return 2;
+      }
+
       out(`verified  ${record.digest}`);
       out(subject);
       out(`  Re-derived from the record's own fields at ${state.checkedAt}.`);
@@ -414,9 +484,20 @@ async function verifyCommand(flags: Flags): Promise<number> {
       } else if (!query.complete) {
         out("  Matched on an abbreviated digest; the full one above is what was checked.");
       }
-      out(`  Not checked: who signed it (${record.signer}) and Rekor inclusion`);
-      out(`  (${record.rekorIndex}). Both need a network this check does not use.`);
+      if (signature.status === "verified") {
+        out(`  Signed by ${signature.facts.identity}`);
+        out(`  issuer ${signature.facts.issuer}, Rekor log index ${signature.facts.logIndex}.`);
+        out("  Certificate chain, signature and Rekor inclusion proof checked offline");
+        out(`  against the Sigstore trusted root fetched ${root.fetchedAt}.`);
+        if (expectedIdentity === undefined) {
+          out("  Pass --signer with the identity you expect to require it.");
+        }
+      } else {
+        out(`  Unsigned: the record says who ran it nowhere it can be checked.`);
+        out("  qed check --sign, in CI, signs a run with the job's own identity.");
+      }
       return 0;
+    }
     case "mismatch":
       out(`mismatch  ${record.digest}`);
       out(subject);
@@ -469,6 +550,10 @@ ${USAGE}`);
     if (error instanceof RecordLookupError) {
       process.stderr.write(`${error.message}
 `);
+      return 2;
+    }
+    if (error instanceof SigningError) {
+      process.stderr.write(`${error.message}\n`);
       return 2;
     }
     if (error instanceof GitError) {

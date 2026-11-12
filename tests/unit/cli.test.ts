@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
@@ -35,12 +35,26 @@ interface Ran {
   readonly stderr: string;
 }
 
-function qed(cwd: string, ...args: string[]): Ran {
-  const r = spawnSync(process.execPath, [TSX, MAIN, ...args], {
-    cwd,
-    encoding: "utf8",
+/**
+ * Runs the CLI without blocking the test worker. A synchronous spawn held the
+ * worker for the whole run, and Vitest gave up waiting on it.
+ */
+function qed(cwd: string, ...args: string[]): Promise<Ran> {
+  return qedWith(cwd, process.env, ...args);
+}
+
+function qedWith(cwd: string, env: NodeJS.ProcessEnv, ...args: string[]): Promise<Ran> {
+  return new Promise((done, failed) => {
+    const child = spawn(process.execPath, [TSX, MAIN, ...args], { cwd, env });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+    child.on("error", failed);
+    child.on("close", (code) => {
+      done({ code, stdout, stderr });
+    });
   });
-  return { code: r.status, stdout: r.stdout, stderr: r.stderr };
 }
 
 function git(cwd: string, ...args: string[]): void {
@@ -99,8 +113,8 @@ afterAll(() => {
 
 describe("qed check", () => {
   let run: Ran;
-  beforeAll(() => {
-    run = qed(repo, "check", "--base", "HEAD", "--inputs", "200", "--no-color");
+  beforeAll(async () => {
+    run = await qed(repo, "check", "--base", "HEAD", "--inputs", "200", "--no-color");
   });
 
   it("exits 1 when something diverged", () => {
@@ -148,9 +162,9 @@ describe("qed check", () => {
 });
 
 describe("qed check --tolerance", () => {
-  it("accepts the drift, says so in the echoed command, and records it", () => {
+  it("accepts the drift, says so in the echoed command, and records it", async () => {
     const out = join(repo, "tolerant");
-    const run = qed(
+    const run = await qed(
       repo,
       "check",
       "--base",
@@ -177,63 +191,83 @@ describe("qed check --tolerance", () => {
 describe("qed verify", () => {
   let listed: ReturnType<typeof digestsOf>;
   let records: string;
-  beforeAll(() => {
+  beforeAll(async () => {
     records = join(repo, "verify-records");
-    const run = qed(repo, "check", "--base", "HEAD", "--inputs", "100", "--records", records);
+    const run = await qed(repo, "check", "--base", "HEAD", "--inputs", "100", "--records", records);
     listed = digestsOf(run.stderr);
   });
 
-  it("verifies every record a check wrote, by its full digest", () => {
+  it("verifies every record a check wrote, by its full digest", async () => {
     for (const { digest } of listed) {
-      const r = qed(repo, "verify", "--digest", digest, "--records", records);
+      const r = await qed(repo, "verify", "--digest", digest, "--records", records);
       expect(r.code, r.stdout + r.stderr).toBe(0);
       expect(r.stdout).toContain(`verified  ${digest}`);
-      expect(r.stdout).toContain("Not checked: who signed it (unsigned)");
+      expect(r.stdout).toContain("Unsigned: the record says who ran it nowhere it can be checked.");
     }
   });
 
-  it("takes the elided form the docs print", () => {
+  it("takes the elided form the docs print", async () => {
     const hex = listed[0]?.digest.slice(7) ?? "";
-    const r = qed(repo, "verify", "--digest", `sha256:${hex.slice(0, 12)}...${hex.slice(-4)}`, "--records", records);
+    const r = await qed(repo, "verify", "--digest", `sha256:${hex.slice(0, 12)}...${hex.slice(-4)}`, "--records", records);
     expect(r.code).toBe(0);
     expect(r.stdout).toContain("abbreviated");
   });
 
-  it("says a file checked without a held digest was checked only against itself", () => {
+  it("says a file checked without a held digest was checked only against itself", async () => {
     const hex = listed[0]?.digest.slice(7) ?? "";
-    const r = qed(repo, "verify", join(records, `${hex}.json`));
+    const r = await qed(repo, "verify", join(records, `${hex}.json`));
     expect(r.code).toBe(0);
     expect(r.stdout).toContain("consistent with itself");
   });
 
-  it("exits 1 when a record was edited after it was written", () => {
+  it("exits 1 when a record was edited after it was written", async () => {
     const entry = listed[1];
     const path = join(records, `${entry?.digest.slice(7)}.json`);
     const record = JSON.parse(readFileSync(path, "utf8")) as AttestationRecord;
     writeFileSync(path, JSON.stringify({ ...record, tolerances: ["float ε 1"] }));
 
-    const r = qed(repo, "verify", "--digest", entry?.digest ?? "", "--records", records);
+    const r = await qed(repo, "verify", "--digest", entry?.digest ?? "", "--records", records);
     expect(r.code).toBe(1);
     expect(r.stdout).toContain("mismatch");
   });
 
-  it("exits 1 when a file carries a different digest from the one held", () => {
+  it("exits 1 when a file carries a different digest from the one held", async () => {
     const [a, b] = listed;
-    const r = qed(repo, "verify", join(records, `${a?.digest.slice(7)}.json`), "--digest", b?.digest ?? "");
+    const r = await qed(repo, "verify", join(records, `${a?.digest.slice(7)}.json`), "--digest", b?.digest ?? "");
     expect(r.code).toBe(1);
     expect(r.stdout).toContain("different digest from the one you hold");
   });
 
-  it("exits 2 when no record matches", () => {
-    const r = qed(repo, "verify", "--digest", "f".repeat(64), "--records", records);
+  it("says an unsigned record is unsigned, and fails it when a signer is required", async () => {
+    const { digest } = listed[0] ?? { digest: "" };
+    const plain = await qed(repo, "verify", "--digest", digest, "--records", records);
+    expect(plain.code).toBe(0);
+    expect(plain.stdout).toContain("Unsigned");
+
+    const required = await qed(
+      repo,
+      "verify",
+      "--digest",
+      digest,
+      "--records",
+      records,
+      "--signer",
+      "https://github.com/acme/ledger/.github/workflows/ci.yml@refs/heads/main",
+    );
+    expect(required.code).toBe(1);
+    expect(required.stdout).toContain("The record is unsigned");
+  });
+
+  it("exits 2 when no record matches", async () => {
+    const r = await qed(repo, "verify", "--digest", "f".repeat(64), "--records", records);
     expect(r.code).toBe(2);
     expect(r.stderr).toContain("No record");
   });
 });
 
 describe("qed repro", () => {
-  it("loads the helper a module imports, at each side's own revision", () => {
-    const r = qed(repo, "repro", "pricing/total.ts", "total", "--input", "[10]", "--base", "HEAD");
+  it("loads the helper a module imports, at each side's own revision", async () => {
+    const r = await qed(repo, "repro", "pricing/total.ts", "total", "--input", "[10]", "--base", "HEAD");
     expect(r.code, r.stderr).toBe(0);
     // base: 10 > 10 is false, so the full rate. head: 10 >= 10, so 0.9.
     expect(r.stdout).toMatch(/^base\s+1000$/m);
@@ -250,21 +284,30 @@ describe("exit 2: the run could not start", () => {
     ["an unknown command", ["frobnicate"], /Unknown command/],
     ["a digest too short to trust", ["verify", "--digest", "9f2a"], /at least 16/],
     ["no command at all", [], /qed check/],
-  ])("for %s", (_, args, message) => {
-    const r = qed(repo, ...args);
+  ])("for %s", async (_, args, message) => {
+    const r = await qed(repo, ...args);
     expect(r.code).toBe(2);
     expect(r.stderr).toMatch(message);
   });
 
-  it("outside a repository", () => {
+  it("for --sign with no identity to sign with", async () => {
+    // Stripped of any CI token, so the test means the same thing in CI.
+    const tokens = new Set(["ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "SIGSTORE_ID_TOKEN"]);
+    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !tokens.has(key)));
+    const r = await qedWith(repo, env, "check", "--base", "HEAD", "--sign");
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("needs an OIDC identity");
+  });
+
+  it("outside a repository", async () => {
     const bare = mkdtempSync(join(tmpdir(), "qed-bare-"));
     scratch.push(bare);
-    const r = qed(bare, "check");
+    const r = await qed(bare, "check");
     expect(r.code).toBe(2);
   });
 
-  it("but --help is a successful answer", () => {
-    const r = qed(repo, "--help");
+  it("but --help is a successful answer", async () => {
+    const r = await qed(repo, "--help");
     expect(r.code).toBe(0);
     expect(r.stdout).toContain("qed verify --digest");
   });
