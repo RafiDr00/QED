@@ -5,8 +5,8 @@
  * generated inputs per function. Every count, counterexample and obstruction
  * below was produced by running the code, not written by hand.
  *
- * Controls: clock frozen, rng seeded, network and timers denied, relative
- * imports pinned, others refused.
+ * Controls: clock frozen, rng seeded, network, timers, crypto and the
+ * high-resolution clock denied, relative imports pinned, others refused.
  * Tolerances applied: none.
  */
 import type { RunResult } from "@qed/ui";
@@ -15,7 +15,7 @@ export const GENERATED_RUN: RunResult = {
   "command": "qed check --base origin/main",
   "changedFunctions": 7,
   "verifiableFunctions": 4,
-  "duration": "0.6s",
+  "duration": "0.3s",
   "runs": [
     {
       "path": "billing/ledger.ts",

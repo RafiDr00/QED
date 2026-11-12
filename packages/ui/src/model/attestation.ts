@@ -49,6 +49,13 @@ export type VerificationState =
 function canonicalVerdict(verdict: AttestationRecord["verdict"]): string {
   switch (verdict.state) {
     case "EQUIVALENT":
+      // The throw count is new; a record without one keeps the form it was
+      // signed in. With one, the fields are JSON-encoded, so a strategy
+      // ending in ":threw=5" cannot pass for a count. The two forms cannot
+      // collide: the old one continues with a digit, this one with "[".
+      if (verdict.threw !== undefined) {
+        return `EQUIVALENT:${JSON.stringify([verdict.inputs, verdict.strategy ?? null, verdict.threw])}`;
+      }
       return verdict.strategy === undefined
         ? `EQUIVALENT:${verdict.inputs}`
         : `EQUIVALENT:${verdict.inputs}:${verdict.strategy}`;

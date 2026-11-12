@@ -37,7 +37,7 @@ export const STEPS: readonly Step[] = [
   {
     n: "02",
     title: "It generates inputs",
-    body: "Type-directed: it reads the declared parameter types and generates from them, seeded with the constants mined out of both versions — because the boundary a change moved is usually written down in the code. Both versions then run on the same inputs under the same controls: clock frozen, rng seeded, network and timers denied, relative imports pinned to the revision being compared.",
+    body: "Type-directed: it reads the declared parameter types and generates from them, seeded with the constants mined out of both versions — because the boundary a change moved is usually written down in the code. Both versions then run on the same inputs under the same controls: clock frozen, rng seeded, network, timers, crypto and the high-resolution clock denied, relative imports pinned to the revision being compared.",
   },
   {
     n: "03",
@@ -200,7 +200,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     id: "controls",
     title: "Determinism controls",
     body: [
-      "Both versions run under the same controls, and the record names each one. The clock is frozen, the rng is seeded, and the network and timers are denied.",
+      "Both versions run under the same controls, and the record names each one. The clock is frozen, the rng is seeded, and the network, timers, crypto and the high-resolution clock are denied. A function that reaches for a global the sandbox does not provide abstains and names it, even if it catches the error.",
       "A relative import is pinned: each version loads the helper from its own revision, so a change to the helper shows up as part of the change. Any other import — a package, or a Node built-in — is refused rather than resolved, because a function whose behaviour depends on another module cannot be compared in isolation unless that module is pinned too.",
       "A function that escapes a control is not run twice and averaged. It abstains, and the obstruction is printed.",
     ],

@@ -7,6 +7,7 @@
  */
 import {
   formatCount,
+  inputsEvidence,
   summarise,
   TERMINAL_GLYPH,
   TOMBSTONE,
@@ -61,7 +62,7 @@ const pad = (text: string, width: number) =>
 function evidenceFor(verdict: Verdict): string {
   switch (verdict.state) {
     case "EQUIVALENT":
-      return `${formatCount(verdict.inputs)} inputs`;
+      return inputsEvidence(verdict);
     case "DIVERGED":
       return "";
     case "ABSTAINED":

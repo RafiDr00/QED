@@ -50,8 +50,8 @@ const header = `/**
  * generated inputs per function. Every count, counterexample and obstruction
  * below was produced by running the code, not written by hand.
  *
- * Controls: clock frozen, rng seeded, network and timers denied, relative
- * imports pinned, others refused.
+ * Controls: clock frozen, rng seeded, network, timers, crypto and the
+ * high-resolution clock denied, relative imports pinned, others refused.
  * Tolerances applied: ${tolerances.length > 0 ? tolerances.join("; ") : "none"}.
  */
 import type { RunResult } from "@qed/ui";

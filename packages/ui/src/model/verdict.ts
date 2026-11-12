@@ -43,6 +43,14 @@ export interface EquivalentVerdict {
   readonly inputs: number;
   /** "type-directed, corpus-seeded, coverage-guided" */
   readonly strategy?: string;
+  /**
+   * How many of `inputs` both versions answered by throwing the same error.
+   *
+   * Agreeing on an error is agreement, but it is not agreement about a
+   * result, and a reader weighing the count should know how much of it was
+   * the error path. Absent when none threw. DECISIONS.md D-050.
+   */
+  readonly threw?: number;
 }
 
 /** Broken: the engine found a difference and minimised it. */
@@ -116,6 +124,14 @@ export function formatCount(n: number): string {
   return COUNT.format(n);
 }
 
+/** "2,000 inputs", or "2,000 inputs · 160 threw" when some agreed by throwing. */
+export function inputsEvidence(verdict: EquivalentVerdict): string {
+  const count = `${formatCount(verdict.inputs)} inputs`;
+  return verdict.threw !== undefined && verdict.threw > 0
+    ? `${count} · ${formatCount(verdict.threw)} threw`
+    : count;
+}
+
 /**
  * The one-line evidence that travels beside the verdict word. Total, because
  * every state owes the reader something.
@@ -123,7 +139,7 @@ export function formatCount(n: number): string {
 export function evidenceLine(verdict: Verdict): string {
   switch (verdict.state) {
     case "EQUIVALENT":
-      return `${formatCount(verdict.inputs)} inputs`;
+      return inputsEvidence(verdict);
     case "DIVERGED": {
       const found = verdict.counterexample.foundAt;
       return found

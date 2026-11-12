@@ -144,7 +144,13 @@ export interface Pair {
 }
 
 export type Finding =
-  | { readonly kind: "agree" }
+  | {
+      readonly kind: "agree";
+      /** False when both sides agreed by throwing the same error. */
+      readonly returned: boolean;
+      /** The error's name, when they did. */
+      readonly threw?: string;
+    }
   | { readonly kind: "nondeterministic" }
   | { readonly kind: "blocked"; readonly obstruction: string }
   | {
@@ -185,9 +191,16 @@ export function examine(
     return { kind: "nondeterministic" };
   }
 
-  return sameOutcome(baseA, headA, tolerance, applied)
-    ? { kind: "agree" }
-    : { kind: "diverged", base: baseA, head: headA };
+  if (!sameOutcome(baseA, headA, tolerance, applied)) {
+    return { kind: "diverged", base: baseA, head: headA };
+  }
+  if (baseA.kind === "returned") return { kind: "agree", returned: true };
+  const error = baseA.value as { name?: unknown } | undefined;
+  return {
+    kind: "agree",
+    returned: false,
+    threw: typeof error?.name === "string" ? error.name : "an error",
+  };
 }
 
 export function verify(
@@ -274,6 +287,10 @@ export function verify(
 
   let blocked: string | undefined;
   let nondeterministic: string | undefined;
+  // Inputs on which both sides returned, and on which both threw alike.
+  let returned = 0;
+  let threw = 0;
+  let firstThrown: string | undefined;
 
   const details = fc.check(
     fc.property(generation.arbitrary, (args: unknown[]) => {
@@ -295,6 +312,12 @@ export function verify(
           return false;
         }
         case "agree":
+          if (finding.returned) {
+            returned++;
+          } else {
+            threw++;
+            firstThrown ??= finding.threw;
+          }
           return true;
       }
     }),
@@ -314,11 +337,22 @@ export function verify(
   if (nondeterministic !== undefined) return abstain(nondeterministic);
 
   if (!details.failed) {
+    // Agreeing by throwing the same error on every input compares no result
+    // at all. It was certified EQUIVALENT with a count, which says the
+    // function was checked when it was never once run to completion - most
+    // often because the sandbox lacked something it needed. DECISIONS.md
+    // D-050.
+    if (returned === 0 && threw > 0) {
+      return abstain(
+        `throws ${firstThrown ?? "an error"} on every generated input, so no result was compared`,
+      );
+    }
     return {
       verdict: {
         state: "EQUIVALENT",
         inputs: details.numRuns,
         strategy: "type-directed, corpus-seeded",
+        ...(threw > 0 ? { threw } : {}),
       },
       tolerancesApplied: [...applied],
       controls,

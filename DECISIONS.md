@@ -495,3 +495,81 @@ platform by `release.yml`, and must run a real check before it is published.
 `install.sh` installs nothing whose SHA-256 does not match the release's
 `SHA256SUMS`, or that does not run.
 
+
+---
+
+## Soundness: no EQUIVALENT that is not true
+
+Each entry below was a pair of functions that behave differently and that the
+engine certified EQUIVALENT. Each has a case in `tests/unit/soundness.test.ts`,
+which fails on the engine before the fix.
+
+### D-048 · Values are classified by brand, not by `instanceof`
+
+The functions under test run in a `node:vm` context, so the Maps, Sets,
+RegExps and Errors they return are that context's, and `instanceof Map` is
+false for every one of them. They fell through to the plain-object path,
+where a Map has no enumerable keys, so `new Set([1])` agreed with
+`new Set([2, 3])` and a counterexample printed a Map as `Map {  }`.
+
+The comparator now asks each value what it is by calling this realm's
+built-in on it - `Map.prototype.has.call(value)` succeeds exactly on objects
+with a Map's internal slots, from any realm - and reads its contents through
+those built-ins. Handing the sandbox the host's `Map` instead was rejected: it
+would put host intrinsics inside the context and still miss any value a
+dependency built. The same pass compares a returned Error's name and message,
+an ArrayBuffer's or DataView's bytes, a boxed primitive's value, enumerable
+symbol keys (paired by description, because each sandbox mints its own
+symbols) and the getters a user-written class declares. Members of a Set and
+keys of a Map that are objects match by structure, because no object from one
+version is ever identical to one from the other; that is recorded as
+`collection members matched by structure`.
+
+Two things remain uncompared, and both are recorded rather than hidden: a
+class's `#private` fields, which the language makes unreadable from outside
+(`private fields of M not compared`), and anything deeper than 32 levels
+(`compared to a depth of 32`).
+
+### D-049 · A gap in the sandbox is an obstruction, even when the code catches it
+
+A function calling `crypto.randomUUID()` threw `ReferenceError: crypto is not
+defined` on both sides, on every input, and both errors agreed. So did a
+function that wrapped a denied `fetch` in `try`/`catch` and returned a
+fallback. Both were certified EQUIVALENT with an input count.
+
+Now:
+
+- A `ReferenceError` for a name this process or a browser defines as a global
+  is an obstruction naming the global. A `ReferenceError` for any other name is
+  a bug in the code, so a typo on one side still diverges.
+- `crypto` and `performance` are present and denied member by member: a random
+  UUID "reads a random number", `performance.now()` "reads a high-resolution
+  clock".
+- The deterministic web globals pure code uses are provided: `TextEncoder`,
+  `TextDecoder`, `URL`, `URLSearchParams`, `structuredClone`, `atob`, `btoa`.
+- Every denial sets a trap on the sandbox before it throws. A call that caught
+  the throw and carried on is still reported as the obstruction it hit.
+
+Records name the new control: `crypto and high-resolution clock denied`.
+
+### D-050 · Agreeing only by throwing is not agreement about a result
+
+A function that threw the same error for every generated input on both sides
+was certified EQUIVALENT with a count - a claim that it was checked, when it
+never once ran to completion. It now abstains: `throws TypeError on every
+generated input, so no result was compared`.
+
+When only some inputs threw, the equivalence stands, because agreeing on an
+error is agreement. The verdict carries a `threw` count and the evidence reads
+`2,000 inputs · 160 threw`, so a reader can see how much of the count was the
+error path. The digest covers it. A verdict without the count keeps the
+canonical form it was signed in, so existing records still verify.
+
+### D-051 · A value that cannot be compared says so
+
+A returned closure is never identical to the one the other version built, so
+a function returning one abstained as "returns a different answer for the
+same input", which is a false reason. A closure inside an object diverged
+against itself. Functions, promises, WeakMaps, WeakSets and WeakRefs anywhere
+in a result are now an obstruction that names where:
+`returns a function at \`compute\`, which cannot be compared`.

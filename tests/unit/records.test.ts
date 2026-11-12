@@ -111,6 +111,7 @@ describe("controls", () => {
       "rng seed 0x5f3a",
       "network denied",
       "timers denied",
+      "crypto and high-resolution clock denied",
       "relative imports pinned, others refused",
     ]);
   });

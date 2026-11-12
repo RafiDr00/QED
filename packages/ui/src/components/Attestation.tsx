@@ -45,7 +45,11 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function inputsLine(record: AttestationRecord): string {
   const { verdict } = record;
   if (verdict.state === "EQUIVALENT") {
-    return `${formatCount(verdict.inputs)} — ${record.inputStrategy}`;
+    const threw =
+      verdict.threw !== undefined && verdict.threw > 0
+        ? `, ${formatCount(verdict.threw)} of them threw on both sides`
+        : "";
+    return `${formatCount(verdict.inputs)}${threw} — ${record.inputStrategy}`;
   }
   if (verdict.state === "DIVERGED") {
     const found = verdict.counterexample.foundAt;

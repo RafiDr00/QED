@@ -65,6 +65,7 @@ export function describeControls(controls: Controls): string[] {
     `rng seed 0x${controls.rngSeed.toString(16)}`,
     "network denied",
     "timers denied",
+    "crypto and high-resolution clock denied",
     "relative imports pinned, others refused",
   ];
 }
@@ -214,6 +215,9 @@ function malformed(value: unknown): string | undefined {
   }
   if (v.state === "EQUIVALENT" && typeof v.inputs !== "number") {
     return "an EQUIVALENT verdict has no input count";
+  }
+  if (v.state === "EQUIVALENT" && v.threw !== undefined && typeof v.threw !== "number") {
+    return "an EQUIVALENT verdict's throw count is not a number";
   }
   if (v.state === "ABSTAINED" && !isString(v.obstruction)) {
     return "an ABSTAINED verdict has no obstruction";

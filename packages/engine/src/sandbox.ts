@@ -99,11 +99,57 @@ function frozenDate(epochMs: number): DateConstructor {
   return Frozen;
 }
 
+/**
+ * Where a sandbox remembers that something reached outside it.
+ *
+ * Throwing alone was not enough. Code that wraps a denied call in
+ * `try { ... } catch { return fallback }` swallowed the obstruction, both
+ * versions returned the fallback, and the pair compared EQUIVALENT on a path
+ * that in production reads the network or the clock. The trap is set before
+ * the throw, so a caught obstruction is still an obstruction. DECISIONS.md
+ * D-049.
+ */
+export interface Trap {
+  obstruction: string | undefined;
+}
+
+/** Records the obstruction on the trap, then throws it. */
+function obstruct(trap: Trap, obstruction: string): never {
+  trap.obstruction ??= obstruction;
+  throw new ObstructionError(obstruction);
+}
+
+/**
+ * What the trap caught since it was last reset.
+ *
+ * Read through a call so the compiler does not narrow the field to the
+ * `undefined` it was reset to: the code that sets it runs in between.
+ */
+function tripped(sandbox: { readonly trap: Trap }): string | undefined {
+  return sandbox.trap.obstruction;
+}
+
 /** Anything that reaches outside the function is an obstruction, by name. */
-function denied(obstruction: string): (...args: unknown[]) => never {
-  return () => {
-    throw new ObstructionError(obstruction);
-  };
+function denied(trap: Trap, obstruction: string): (...args: unknown[]) => never {
+  return () => obstruct(trap, obstruction);
+}
+
+/**
+ * A namespace every member of which is an obstruction.
+ *
+ * `crypto` and `performance` are objects, not functions: denying them member
+ * by member would leave every member nobody listed reading as `undefined`,
+ * which both versions agree about.
+ */
+function deniedNamespace(
+  trap: Trap,
+  describe: (member: string) => string,
+): object {
+  return new Proxy(Object.freeze({}), {
+    get: (_, member) =>
+      typeof member === "symbol" ? undefined : obstruct(trap, describe(member)),
+    has: () => true,
+  });
 }
 
 /**
@@ -194,6 +240,8 @@ export interface Sandbox {
   readonly wrapper: Wrapper;
   /** Dependency bodies, compiled once each. */
   readonly wrappers: Map<string, Wrapper>;
+  /** Set when anything denied was reached, even if the code caught it. */
+  readonly trap: Trap;
 }
 
 /** Evaluates a compiled wrapper in a context, once. */
@@ -201,22 +249,37 @@ function wrapperFor(compiled: Compiled, context: Context): Wrapper {
   return compiled.script.runInContext(context, { timeout: 5000 }) as Wrapper;
 }
 
-function globalsFor(controls: Controls): Record<string, unknown> {
+function globalsFor(controls: Controls, trap: Trap): Record<string, unknown> {
   return {
     Date: frozenDate(controls.epochMs),
     Math: seededMath(controls.rngSeed),
-    fetch: denied("opens a network connection"),
-    XMLHttpRequest: denied("opens a network connection"),
-    WebSocket: denied("opens a network connection"),
-    setTimeout: denied("schedules work on a timer"),
-    setInterval: denied("schedules work on a timer"),
-    setImmediate: denied("schedules work on a timer"),
-    queueMicrotask: denied("schedules work on a timer"),
+    fetch: denied(trap, "opens a network connection"),
+    XMLHttpRequest: denied(trap, "opens a network connection"),
+    WebSocket: denied(trap, "opens a network connection"),
+    setTimeout: denied(trap, "schedules work on a timer"),
+    setInterval: denied(trap, "schedules work on a timer"),
+    setImmediate: denied(trap, "schedules work on a timer"),
+    queueMicrotask: denied(trap, "schedules work on a timer"),
+    crypto: deniedNamespace(trap, (member) =>
+      member === "randomUUID" || member === "getRandomValues"
+        ? "reads a random number"
+        : `uses crypto.${member}, which the sandbox does not provide`,
+    ),
+    performance: deniedNamespace(trap, () => "reads a high-resolution clock"),
+    // Deterministic functions pure code legitimately calls. Leaving them out
+    // made both versions throw the same ReferenceError, which compared equal.
+    TextEncoder,
+    TextDecoder,
+    URL,
+    URLSearchParams,
+    structuredClone,
+    atob,
+    btoa,
     process: Object.freeze({
       env: Object.freeze({}),
       argv: Object.freeze([]),
       platform: "qed",
-      hrtime: denied("reads a high-resolution clock"),
+      hrtime: denied(trap, "reads a high-resolution clock"),
     }),
     console: Object.freeze({
       log: () => undefined,
@@ -234,12 +297,12 @@ function requireFrom(
   fromFile: string,
 ): Record<string, unknown> {
   if (!specifier.startsWith(".")) {
-    throw new ObstructionError(`imports ${specifier}`);
+    obstruct(sandbox.trap, `imports ${specifier}`);
   }
 
   const resolved = sandbox.resolver?.(specifier, fromFile);
   if (!resolved) {
-    throw new ObstructionError(`imports ${specifier}, which is not pinned`);
+    obstruct(sandbox.trap, `imports ${specifier}, which is not pinned`);
   }
 
   const already = sandbox.loaded.get(resolved.path);
@@ -277,7 +340,8 @@ export function loadModule(
   resolver?: Resolver,
 ): Sandbox {
   const compiled = compile(source, fileName);
-  const context = createContext(globalsFor(controls));
+  const trap: Trap = { obstruction: undefined };
+  const context = createContext(globalsFor(controls, trap));
   const sandbox: Sandbox = {
     context,
     compiled,
@@ -286,6 +350,7 @@ export function loadModule(
     loaded: new Map(),
     wrapper: wrapperFor(compiled, context),
     wrappers: new Map(),
+    trap,
   };
 
   // Prove it loads before anyone asks for a function out of it.
@@ -305,6 +370,7 @@ export function loadModule(
 export function instantiate(sandbox: Sandbox): Record<string, unknown> {
   const module = { exports: {} as Record<string, unknown> };
   sandbox.loaded.clear();
+  sandbox.trap.obstruction = undefined;
 
   try {
     sandbox.wrapper(module, module.exports, (specifier: string) =>
@@ -312,9 +378,14 @@ export function instantiate(sandbox: Sandbox): Record<string, unknown> {
     );
   } catch (error) {
     if (error instanceof ObstructionError) throw error;
+    const missing = missingGlobal(error);
+    if (missing !== undefined) throw new ObstructionError(missing);
     const message = error instanceof Error ? error.message : String(error);
     throw new ObstructionError(`fails to load: ${message}`);
   }
+  // The module body caught a denied call and carried on.
+  const caught = tripped(sandbox);
+  if (caught !== undefined) throw new ObstructionError(caught);
   return module.exports;
 }
 
@@ -326,30 +397,141 @@ export interface CallOutcome {
   readonly obstruction?: string;
 }
 
+/**
+ * Names a JavaScript host provides that this sandbox does not.
+ *
+ * Anything this process has as a global, plus the browser's. Reaching for one
+ * is an environment the function expects and the sandbox lacks - an
+ * obstruction - whereas a `ReferenceError` for a name no host defines is a
+ * bug in the code, and a version that has one where the other does not has
+ * diverged.
+ */
+const BROWSER_GLOBALS = new Set([
+  "window",
+  "document",
+  "navigator",
+  "location",
+  "localStorage",
+  "sessionStorage",
+  "indexedDB",
+  "self",
+  "Deno",
+  "Bun",
+]);
+
+/**
+ * The obstruction a `ReferenceError` stands for, when it is the sandbox's
+ * gap rather than the code's bug.
+ *
+ * Without this, a function calling `crypto.randomUUID()` - or anything else
+ * the sandbox did not provide - threw the same ReferenceError on both sides,
+ * for every input, and was certified EQUIVALENT with a count. DECISIONS.md
+ * D-049.
+ */
+export function missingGlobal(error: unknown): string | undefined {
+  const described = describeError(error);
+  if (described.name !== "ReferenceError") return undefined;
+  const name = /^(\S+) is not defined$/.exec(described.message)?.[1];
+  if (name === undefined) return undefined;
+  if (!(name in globalThis) && !BROWSER_GLOBALS.has(name)) return undefined;
+  return `reaches for \`${name}\`, which the sandbox does not provide`;
+}
+
+/**
+ * Why a returned value cannot be compared, if it cannot.
+ *
+ * A function, a promise or a weak collection carries behaviour or contents
+ * that no comparison can reach. Two closures built by two loads of the same
+ * code are never identical, so a function returned from both sides used to
+ * abstain as "returns a different answer for the same input" - a false
+ * reason - and one nested in an object diverged against itself.
+ */
+export function incomparable(value: unknown): string | undefined {
+  const seen = new Set<unknown>();
+  const visit = (v: unknown, path: string, depth: number): string | undefined => {
+    const at = path === "" ? "" : ` at \`${path}\``;
+    if (typeof v === "function") return `returns a function${at}, which cannot be compared`;
+    if (typeof v !== "object" || v === null || depth > 12 || seen.has(v)) return undefined;
+    seen.add(v);
+
+    const tag = Object.prototype.toString.call(v);
+    if (tag === "[object Promise]" || isThenable(v)) {
+      return `returns a promise${at}, which cannot be compared`;
+    }
+    if (tag === "[object WeakMap]" || tag === "[object WeakSet]" || tag === "[object WeakRef]") {
+      return `returns a ${tag.slice(8, -1)}${at}, whose contents cannot be read`;
+    }
+
+    const join = (key: string | number) =>
+      typeof key === "number" ? `${path}[${key}]` : path === "" ? key : `${path}.${key}`;
+
+    if (Array.isArray(v)) {
+      for (let i = 0; i < v.length; i++) {
+        const found = visit(v[i], join(i), depth + 1);
+        if (found) return found;
+      }
+      return undefined;
+    }
+    if (tag === "[object Map]" || tag === "[object Set]") {
+      let i = 0;
+      try {
+        for (const entry of v as Iterable<unknown>) {
+          const found = visit(entry, join(i++), depth + 1);
+          if (found) return found;
+        }
+      } catch {
+        // Not iterable after all; the comparison will say what it is.
+      }
+      return undefined;
+    }
+    for (const key of Object.keys(v)) {
+      const descriptor = Object.getOwnPropertyDescriptor(v, key);
+      if (!descriptor || !("value" in descriptor)) continue;
+      const found = visit(descriptor.value, join(key), depth + 1);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  return visit(value, "", 0);
+}
+
 function invoke(
+  sandbox: Sandbox,
   target: unknown,
   args: readonly unknown[],
   name: string,
 ): CallOutcome {
+  const blocked = (obstruction: string): CallOutcome => ({
+    kind: "threw",
+    value: undefined,
+    obstruction,
+  });
   if (typeof target !== "function") {
-    return {
-      kind: "threw",
-      value: undefined,
-      obstruction: `exports no function named '${name}'`,
-    };
+    return blocked(`exports no function named '${name}'`);
   }
+
+  sandbox.trap.obstruction = undefined;
+  let outcome: CallOutcome;
   try {
     const value = (target as (...a: readonly unknown[]) => unknown)(...args);
-    if (isThenable(value)) {
-      return { kind: "threw", value: undefined, obstruction: "is asynchronous" };
-    }
-    return { kind: "returned", value };
+    if (isThenable(value)) return blocked("is asynchronous");
+    outcome = { kind: "returned", value };
   } catch (error) {
-    if (error instanceof ObstructionError) {
-      return { kind: "threw", value: undefined, obstruction: error.obstruction };
-    }
-    return { kind: "threw", value: describeError(error) };
+    if (error instanceof ObstructionError) return blocked(error.obstruction);
+    const missing = missingGlobal(error);
+    if (missing !== undefined) return blocked(missing);
+    outcome = { kind: "threw", value: describeError(error) };
   }
+
+  // It reached something denied and caught it: still an obstruction.
+  const caught = tripped(sandbox);
+  if (caught !== undefined) return blocked(caught);
+
+  if (outcome.kind === "returned") {
+    const reason = incomparable(outcome.value);
+    if (reason !== undefined) return blocked(reason);
+  }
+  return outcome;
 }
 
 /**
@@ -372,7 +554,7 @@ export function callFunction(
     }
     throw error;
   }
-  return invoke(exports[name], args, name);
+  return invoke(sandbox, exports[name], args, name);
 }
 
 /**
@@ -401,8 +583,8 @@ export function callTwice(
 
   const target = exports[name];
   return [
-    invoke(target, structuredClone(args), name),
-    invoke(target, structuredClone(args), name),
+    invoke(sandbox, target, structuredClone(args), name),
+    invoke(sandbox, target, structuredClone(args), name),
   ];
 }
 
