@@ -1,6 +1,8 @@
 import { createContext, Script, type Context } from "node:vm";
 import ts from "typescript";
 
+import { callbacksIn, cloneArgs } from "./encode.js";
+
 /**
  * The determinism controls, as the design system names them: "clock frozen,
  * rng seed 0x5f3a, network denied, overlay fs".
@@ -189,6 +191,47 @@ type Wrapper = (
   require: (specifier: string) => unknown,
 ) => void;
 
+/* ------------------------------------------------------------------------ */
+/* The time budget                                                          */
+/* ------------------------------------------------------------------------ */
+
+/** The run went past its time budget. */
+export class BudgetExceeded extends Error {
+  constructor(readonly ms: number) {
+    super(`did not finish within ${ms}ms`);
+    this.name = "BudgetExceeded";
+  }
+}
+
+const GUARD_KEY = Symbol.for("qed.guard");
+const guardContext = createContext({});
+const guardScript = new Script("globalThis[Symbol.for('qed.guard')]()");
+
+/**
+ * Runs `work` under a watchdog that stops it after `ms`.
+ *
+ * A function that loops forever on one generated input used to hang the
+ * whole run, because a call into a context has no timeout of its own. A
+ * timeout per call costs a watchdog thread per call - about 120µs, six
+ * hundred times the call itself - so the budget is one watchdog around all
+ * of one function's verification instead. It stops everything inside it,
+ * however deeply nested, and the process carries on. DECISIONS.md D-056.
+ */
+export function withinBudget<T>(work: () => T, ms: number): T {
+  const context = guardContext as Record<symbol, unknown>;
+  context[GUARD_KEY] = work;
+  try {
+    return guardScript.runInContext(guardContext, { timeout: ms }) as T;
+  } catch (error) {
+    if ((error as { code?: unknown } | null)?.code === "ERR_SCRIPT_EXECUTION_TIMEOUT") {
+      throw new BudgetExceeded(ms);
+    }
+    throw error;
+  } finally {
+    context[GUARD_KEY] = undefined;
+  }
+}
+
 /** Transpiling the same text thousands of times was 45% of a run. */
 const compileCache = new Map<string, Compiled>();
 
@@ -203,6 +246,10 @@ function compile(source: string, fileName: string): Compiled {
       module: ts.ModuleKind.CommonJS,
       target: ts.ScriptTarget.ES2022,
       removeComments: false,
+      // A .tsx module compiles to calls into `react/jsx-runtime`, which is an
+      // import like any other: refused where it is used. Left unset, the JSX
+      // was emitted as-is and the module failed to parse at all.
+      jsx: ts.JsxEmit.ReactJSX,
     },
     reportDiagnostics: true,
   });
@@ -216,15 +263,21 @@ function compile(source: string, fileName: string): Compiled {
     );
   }
 
-  const compiled: Compiled = {
-    script: new Script(
+  let script: Script;
+  try {
+    script = new Script(
       `(function (module, exports, require) {
 ${transpiled.outputText}
 })`,
       { filename: fileName },
-    ),
-    fileName,
-  };
+    );
+  } catch (error) {
+    // Transpiling reports only TypeScript's own syntax errors; what is left
+    // for V8 to reject surfaces here, and is the same kind of answer.
+    const message = error instanceof Error ? error.message : String(error);
+    throw new ObstructionError(`does not compile: ${message}`);
+  }
+  const compiled: Compiled = { script, fileName };
   compileCache.set(key, compiled);
   return compiled;
 }
@@ -291,18 +344,49 @@ function globalsFor(controls: Controls, trap: Trap): Record<string, unknown> {
   };
 }
 
+/**
+ * An import that is refused when it is used, not when it is loaded.
+ *
+ * Refusing at load meant one `import { readFileSync } from "node:fs"` made
+ * every function in the file abstain - including the ones that never touch
+ * it. The compiled module reads an import's members only where the code uses
+ * them, so a stand-in that throws on any use refuses exactly the functions
+ * that reach for it, with the same words as before. DECISIONS.md D-055.
+ */
+function deferredImport(sandbox: Sandbox, obstruction: string): unknown {
+  const refuse = (): never => obstruct(sandbox.trap, obstruction);
+  return new Proxy(function () {}, {
+    // Read by module interop helpers and by anything probing for a promise;
+    // answering "nothing here" lets the module load.
+    get: (_, key) =>
+      typeof key === "symbol" || key === "__esModule" || key === "then"
+        ? undefined
+        : refuse(),
+    apply: refuse,
+    construct: refuse,
+    has: refuse,
+    ownKeys: refuse,
+    set: refuse,
+    defineProperty: refuse,
+    deleteProperty: refuse,
+    getOwnPropertyDescriptor: refuse,
+    getPrototypeOf: refuse,
+    setPrototypeOf: refuse,
+  });
+}
+
 function requireFrom(
   sandbox: Sandbox,
   specifier: string,
   fromFile: string,
-): Record<string, unknown> {
+): unknown {
   if (!specifier.startsWith(".")) {
-    obstruct(sandbox.trap, `imports ${specifier}`);
+    return deferredImport(sandbox, `imports ${specifier}`);
   }
 
   const resolved = sandbox.resolver?.(specifier, fromFile);
   if (!resolved) {
-    obstruct(sandbox.trap, `imports ${specifier}, which is not pinned`);
+    return deferredImport(sandbox, `imports ${specifier}, which is not pinned`);
   }
 
   const already = sandbox.loaded.get(resolved.path);
@@ -395,6 +479,26 @@ export interface CallOutcome {
   readonly value: unknown;
   /** Set when the call could not be run at all. */
   readonly obstruction?: string;
+  /**
+   * Per generated callback in the arguments, the arguments of each call it
+   * received. Absent when the arguments held no callback.
+   */
+  readonly calls?: readonly unknown[][][];
+}
+
+/** Invokes on a fresh copy of the arguments and notes what callbacks saw. */
+function invokeObserved(
+  sandbox: Sandbox,
+  target: unknown,
+  args: readonly unknown[],
+  name: string,
+): CallOutcome {
+  const copy = cloneArgs(args);
+  const outcome = invoke(sandbox, target, copy, name);
+  const calls = callbacksIn(copy);
+  return calls === undefined || outcome.obstruction !== undefined
+    ? outcome
+    : { ...outcome, calls };
 }
 
 /**
@@ -456,6 +560,7 @@ export function incomparable(value: unknown): string | undefined {
 
     const tag = Object.prototype.toString.call(v);
     if (tag === "[object Promise]" || isThenable(v)) {
+      silence(v);
       return `returns a promise${at}, which cannot be compared`;
     }
     if (tag === "[object WeakMap]" || tag === "[object WeakSet]" || tag === "[object WeakRef]") {
@@ -514,7 +619,10 @@ function invoke(
   let outcome: CallOutcome;
   try {
     const value = (target as (...a: readonly unknown[]) => unknown)(...args);
-    if (isThenable(value)) return blocked("is asynchronous");
+    if (isThenable(value)) {
+      silence(value);
+      return blocked("is asynchronous");
+    }
     outcome = { kind: "returned", value };
   } catch (error) {
     if (error instanceof ObstructionError) return blocked(error.obstruction);
@@ -554,7 +662,7 @@ export function callFunction(
     }
     throw error;
   }
-  return invoke(sandbox, exports[name], args, name);
+  return invokeObserved(sandbox, exports[name], args, name);
 }
 
 /**
@@ -583,9 +691,28 @@ export function callTwice(
 
   const target = exports[name];
   return [
-    invoke(sandbox, target, structuredClone(args), name),
-    invoke(sandbox, target, structuredClone(args), name),
+    invokeObserved(sandbox, target, args, name),
+    invokeObserved(sandbox, target, args, name),
   ];
+}
+
+/**
+ * Marks a promise the engine will not await as handled.
+ *
+ * An async function that rejects - often because it reached something denied
+ * - left a rejected promise nobody handled, and Node ends the process on one.
+ * The verdict already says "is asynchronous"; the rejection is not news.
+ * Only a real promise is touched: a hand-written `then` is user code, and
+ * calling it would run that code outside any control.
+ */
+function silence(value: unknown): void {
+  if (Object.prototype.toString.call(value) !== "[object Promise]") return;
+  try {
+    const then: unknown = Reflect.get(Promise.prototype, "then");
+    void Reflect.apply(then as (...args: unknown[]) => unknown, value, [undefined, () => undefined]);
+  } catch {
+    // Not a promise after all.
+  }
 }
 
 function isThenable(value: unknown): boolean {

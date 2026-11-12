@@ -133,7 +133,10 @@ export function buildRunLines(result: RunResult): readonly RunLine[] {
   for (const run of result.runs) {
     const tone = TONE_BY_STATE[run.verdict.state];
     const glyph = TERMINAL_GLYPH[run.verdict.state];
-    const evidence = evidenceFor(run.verdict);
+    // A function in the run because a file it imports changed says which.
+    const evidence = [evidenceFor(run.verdict), run.via === undefined ? "" : `via ${run.via}`]
+      .filter((part) => part !== "")
+      .join(" · ");
     const overflows =
       run.path.length + 2 > pathWidth || run.symbol.length + 2 > symbolWidth;
 

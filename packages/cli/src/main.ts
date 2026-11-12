@@ -6,14 +6,20 @@ import { renderRun, exitCodeFor } from "@qed/cli-render";
 import { verifyRecord, type AttestationRecord } from "@qed/ui/model";
 import {
   decodeArgs,
+  importedSpecifiers,
   relativeResolver,
   runPair,
   show,
   loadModule,
   callFunction,
+  withinBudget,
+  BudgetExceeded,
   DEFAULT_CONTROLS,
   type ModulePair,
 } from "@qed/engine";
+
+/** One repro call either side; a loop that long is the answer. */
+const REPRO_BUDGET_MS = 10_000;
 
 import {
   COMMANDS,
@@ -30,6 +36,7 @@ import {
   repositoryName,
   repositoryRoot,
   resolveRef,
+  trackedFiles,
   workingCommit,
   GitError,
 } from "./git.js";
@@ -83,8 +90,9 @@ const IGNORED = /(\.d\.ts|\.test\.|\.spec\.|node_modules|\/dist\/)/;
 function gather(ref: string, cwd: string): ModulePair[] {
   const root = repositoryRoot(cwd);
   const pairs: ModulePair[] = [];
+  const changed = changedFiles(ref, root);
 
-  for (const path of changedFiles(ref, root)) {
+  for (const path of changed) {
     if (!VERIFIABLE_EXTENSION.test(path) || IGNORED.test(path)) continue;
 
     const base = fileAt(ref, path, root);
@@ -95,7 +103,49 @@ function gather(ref: string, cwd: string): ModulePair[] {
 
     pairs.push({ path, base, head: readFileSync(absolute, "utf8") });
   }
-  return pairs;
+  return [...pairs, ...importersOf(new Set(changed), pairs, ref, root)];
+}
+
+/**
+ * Unchanged files that import a changed one.
+ *
+ * A function whose own text did not change can still behave differently,
+ * because a helper it calls did. Only the diffed files used to be verified,
+ * so a changed `rate.ts` was checked while the `total.ts` built on it - the
+ * function a caller actually uses - was not. Each importer is compared
+ * against itself, with each side's imports pinned to its own revision, so
+ * the change reaches it exactly as it reaches production. One level of
+ * import, not the whole graph: a widely used helper would otherwise pull in
+ * the repository. DECISIONS.md D-057.
+ */
+function importersOf(
+  changed: ReadonlySet<string>,
+  already: readonly ModulePair[],
+  ref: string,
+  root: string,
+): ModulePair[] {
+  const listed = new Set(already.map((pair) => pair.path));
+  const { readHead } = readers(ref, root);
+  const resolve = relativeResolver(readHead);
+  const out: ModulePair[] = [];
+
+  for (const path of trackedFiles(root)) {
+    if (listed.has(path) || changed.has(path)) continue;
+    if (!VERIFIABLE_EXTENSION.test(path) || IGNORED.test(path)) continue;
+    const head = readHead(path);
+    if (head === undefined) continue;
+
+    const via = importedSpecifiers(head)
+      .filter((specifier) => specifier.startsWith("."))
+      .map((specifier) => resolve(specifier, path)?.path)
+      .find((target) => target !== undefined && changed.has(target));
+    if (via === undefined) continue;
+
+    const base = fileAt(ref, path, root);
+    if (base === undefined) continue;
+    out.push({ path, base, head, via });
+  }
+  return out;
 }
 
 async function check(flags: Flags): Promise<number> {
@@ -264,17 +314,31 @@ function repro(flags: Flags): number {
     ["base", base, readBase],
     ["head", head, readHead],
   ] as const) {
-    const outcome = callFunction(
-      loadModule(source, path, DEFAULT_CONTROLS, relativeResolver(read)),
-      symbol,
-      structuredClone(args),
-    );
-    const printed =
-      outcome.obstruction !== undefined
-        ? outcome.obstruction
-        : outcome.kind === "threw"
-          ? `threw ${show(outcome.value)}`
-          : show(outcome.value);
+    let printed: string;
+    try {
+      const outcome = withinBudget(
+        () =>
+          callFunction(
+            loadModule(source, path, DEFAULT_CONTROLS, relativeResolver(read)),
+            symbol,
+            args,
+          ),
+        REPRO_BUDGET_MS,
+      );
+      printed =
+        outcome.obstruction !== undefined
+          ? outcome.obstruction
+          : outcome.kind === "threw"
+            ? `threw ${show(outcome.value)}`
+            : show(outcome.value);
+      if (outcome.obstruction === undefined && outcome.calls !== undefined) {
+        const calls = outcome.calls.length === 1 ? outcome.calls[0] : outcome.calls;
+        printed += ` · callbacks received ${show(calls)}`;
+      }
+    } catch (error) {
+      if (!(error instanceof BudgetExceeded)) throw error;
+      printed = `does not finish within ${REPRO_BUDGET_MS / 1000}s`;
+    }
     process.stdout.write(`${label.padEnd(6)}${printed}\n`);
   }
   return 0;

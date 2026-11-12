@@ -15,8 +15,15 @@ import { join } from "node:path";
 
 import { build } from "esbuild";
 
+import { libClosure } from "../packages/engine/src/libs.ts";
+
 const root = process.cwd();
 export const BUNDLE = join(root, "packages/cli/dist/qed.cjs");
+
+// The type checker reads the standard library's declarations. The binary has
+// no typescript package on disk to read them from, so the files it needs are
+// embedded, and packages/engine/src/libs.ts reads them from here.
+const libs = libClosure();
 
 const result = await build({
   entryPoints: [join(root, "packages/cli/src/main.ts")],
@@ -28,6 +35,7 @@ const result = await build({
   legalComments: "none",
   logLevel: "warning",
   metafile: true,
+  define: { __QED_LIBS__: JSON.stringify(libs) },
 });
 
 const inputs = Object.keys(result.metafile.inputs).length;

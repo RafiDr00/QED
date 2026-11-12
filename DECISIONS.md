@@ -573,3 +573,104 @@ same input", which is a false reason. A closure inside an object diverged
 against itself. Functions, promises, WeakMaps, WeakSets and WeakRefs anywhere
 in a result are now an obstruction that names where:
 `returns a function at \`compute\`, which cannot be compared`.
+
+---
+
+## Coverage: verify the code people actually write
+
+Phase 1 stopped false claims. These stop needless abstentions: shapes of
+ordinary TypeScript the engine refused although nothing about them is
+unknowable. Each has a case in `tests/unit/coverage.test.ts`. Gate G11 keeps
+the result honest by verifying QED's own packages against themselves.
+
+### D-052 · Parameter types are resolved by the TypeScript checker
+
+The generator read types as they were written, so it knew a locally declared
+interface and nothing else: an interface imported from `./types`, `Partial`,
+`Pick`, `Omit`, `Record` with literal keys, an intersection, a branded
+`number & { __brand }`, `Date`, `Map`, `Set`, `readonly T[]`, a template
+literal type and a constrained type parameter all abstained. Every function
+in QED's own diff abstained on one of them.
+
+A TypeScript program is now built over the module and the relative imports
+the resolver pins, at the revision being compared, against
+`lib.es2022.d.ts` and nothing else. The checker says what each parameter is,
+and inputs are generated from that. The lib files are parsed once per
+process and every program reuses them; programs are cached per module. The
+single binary has no `typescript` package on disk, so `build-cli.ts` embeds
+the 57 lib files (about 460KB).
+
+Still refused, by name: a class instance (generating one would mean inventing
+its constructor's work), a `Promise`, a `RegExp` or another library type that
+is behaviour rather than data, a type from a package, an unconstrained type
+parameter, and a type that contains itself. A refusal now names where in the
+parameter it happened: ``parameter `radius` at `conditions[].value` is `any` ``.
+
+### D-053 · A callback's calls are part of the result
+
+A function-typed parameter is generated as a callback that returns a
+generated value of the declared return type and records every call it
+receives. Two versions that return the same thing but call back a different
+number of times, or with different arguments, have changed what a caller
+observes, so the calls are compared with the return value. A callback is
+encoded in the repro line by what it returns, so a repro rebuilds it.
+
+Arguments are now copied for each call through the repro encoding rather
+than `structuredClone`, which refuses functions. That also means what a call
+ran with is exactly what its repro line replays.
+
+### D-054 · Every export form is seen
+
+`export { a, b as c }` and `export default` used to be invisible, and
+`export default function c` was looked up as `c`. One finder now serves the
+run, the generator and the checker, and a default export is verified under
+the name the module really exports it as: `default`.
+
+### D-055 · A package import is refused where it is used
+
+One `import { readFileSync } from "node:fs"` made every function in the file
+abstain, because the import was refused when the module loaded. A refused
+import now loads as a stand-in that refuses on first use, with the same
+words. A function that never touches it is verified; one that does still
+abstains as `imports node:fs`; one whose module reads it while loading still
+fails to load.
+
+### D-056 · One function's verification has a time budget
+
+A function that looped forever on one generated input hung the whole run. A
+vm timeout per call costs a watchdog thread per call, about 120µs, which is
+600 times the call itself. Instead each function's whole verification runs
+under one watchdog, one minute by default, which stops anything inside it
+however deeply nested and leaves the process healthy. Past it the function
+abstains: `does not finish within 60s on the generated inputs`. Which input
+looped is not knowable from there, so the reason does not claim to know.
+
+### D-057 · A changed helper's importers are verified
+
+Only diffed files were verified, so a changed `rate.ts` was checked while the
+`total.ts` built on it was not. `qed check` now also verifies each tracked
+file that directly imports a changed file, comparing it with itself while each
+side's imports are pinned to that side's revision. Those rows say why they are
+there: `via pricing/rate.ts`. One level only, because a widely imported helper
+would otherwise pull in the repository.
+
+Constants are now mined from pinned dependencies as well as from the two
+versions, because the boundary that moved in `total.ts` was the `10` written
+in `rate.ts`.
+
+Making this practical exposed that every call re-resolved every import, and
+on the base side each lookup spawned a `git show` per candidate extension. A
+two-function check took two minutes and ran past the budget. The resolver now
+remembers each revision's files, one resolver serves a whole run, and the
+same check takes under a second. An import written as `./verdict.js`, the
+standard ESM way to name a `.ts` file, now resolves to the `.ts`.
+
+### D-058 · Where a change bites is never invented
+
+The description of where a change bites considered equality with any value
+the first diverging input happened to hold. With one diverging input in the
+sample, it printed "Diverges exactly when `cents` is 410762" about a change
+that had nothing to do with cents. A value can now be named only when the
+code names it, as a mined constant, or when it is a boolean, null or
+undefined. No description is drawn from fewer than three diverging inputs;
+below that the line says so: "too few to say where".

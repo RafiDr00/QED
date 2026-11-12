@@ -77,6 +77,11 @@ export interface FunctionRun {
   /** The symbol inside it, e.g. computeVat */
   readonly symbol: string;
   readonly verdict: Verdict;
+  /**
+   * The changed file this function reaches through an import, when the
+   * function is in the run only for that reason. "via pricing/rate.ts".
+   */
+  readonly via?: string;
 }
 
 export interface RunResult {

@@ -211,3 +211,20 @@ describe("what cannot be compared says so, with the right reason", () => {
     });
   });
 });
+
+describe("where a change bites is never invented", () => {
+  it("a value no code names is not offered as the condition", () => {
+    // Diverges on a sliver of inputs no constant describes. The description
+    // used to name whatever value the one diverging draw happened to have.
+    const base = fn("return n;", "number");
+    const head = fn("return Math.sin(n) > 0.9999 ? 0 : n;", "number");
+    const r = verify({ fileName: "subject.ts", symbol: "f", base, head }, { inputs: 2000 });
+    expect(r.verdict.state).toBe("DIVERGED");
+    for (const condition of r.blast?.conditions ?? []) {
+      if (condition.operator === "is" && typeof condition.value === "number") {
+        expect([0, 1, -1, 0.9999]).toContain(condition.value);
+      }
+    }
+    expect(r.blastSummary ?? "").not.toMatch(/exactly when the input is -?\d{3,}/);
+  });
+});

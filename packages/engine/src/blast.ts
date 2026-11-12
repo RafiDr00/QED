@@ -1,7 +1,7 @@
 import fc from "fast-check";
 
 import { show, type Tolerance } from "./compare.js";
-import type { Generation } from "./generate.js";
+import type { Corpus, Generation } from "./generate.js";
 import { examine, type Finding } from "./verify.js";
 
 /**
@@ -79,10 +79,26 @@ const matches = (condition: Condition, value: unknown): boolean => {
   }
 };
 
+/**
+ * Whether "is <value>" can be said of a value without overfitting.
+ *
+ * Equality with whatever a random draw happened to produce describes that
+ * draw and nothing else: with one diverging input in the sample, "diverges
+ * exactly when `cents` is 410762" was printed as fact about a change that
+ * had nothing to do with cents. A value can be named when the code names it
+ * - a constant mined from either version - or when its type has only a few
+ * values to choose from. DECISIONS.md D-058.
+ */
+function nameable(value: unknown, corpus: Corpus): boolean {
+  if (typeof value === "number") return corpus.numbers.includes(value);
+  if (typeof value === "string") return corpus.strings.includes(value);
+  return typeof value === "boolean" || value === null || value === undefined;
+}
+
 /** Conditions worth testing, drawn from what the diverging inputs look like. */
 function candidates(
   diverging: readonly Leaf[][],
-  corpus: readonly number[],
+  corpus: Corpus,
 ): Condition[] {
   const out: Condition[] = [];
   const seen = new Set<string>();
@@ -95,11 +111,14 @@ function candidates(
 
   const first = diverging[0] ?? [];
   for (const leaf of first) {
-    // Equality against the value this input happened to have.
-    add({ path: leaf.path, operator: "is", value: leaf.value });
+    // Equality against the value this input happened to have, when that
+    // value is one the code itself names.
+    if (nameable(leaf.value, corpus)) {
+      add({ path: leaf.path, operator: "is", value: leaf.value });
+    }
 
     if (typeof leaf.value === "number") {
-      for (const threshold of corpus) {
+      for (const threshold of corpus.numbers) {
         add({ path: leaf.path, operator: "is at least", value: threshold });
         add({ path: leaf.path, operator: "is more than", value: threshold });
       }
@@ -123,8 +142,10 @@ const valueAt = (row: readonly Leaf[], path: string): unknown =>
 function describe(
   diverging: readonly Leaf[][],
   agreeing: readonly Leaf[][],
-  corpus: readonly number[],
+  corpus: Corpus,
 ): { conditions: Condition[]; exact: boolean } {
+  // Too few diverging inputs to tell a rule from a coincidence.
+  if (diverging.length < MIN_SUPPORT) return { conditions: [], exact: false };
   const conditions: Condition[] = [];
   let remaining = [...agreeing];
   const pool = candidates(diverging, corpus);
@@ -155,6 +176,9 @@ function describe(
   return { conditions, exact: remaining.length === 0 };
 }
 
+/** The fewest diverging inputs a description is drawn from. */
+export const MIN_SUPPORT = 3;
+
 export interface BlastOptions {
   readonly sample?: number;
   readonly seed?: number;
@@ -171,7 +195,7 @@ export function blastRadius(
   symbol: string,
   generation: Extract<Generation, { kind: "ok" }>,
   tolerance: Tolerance,
-  corpus: readonly number[],
+  corpus: Corpus,
   options: BlastOptions = {},
 ): BlastRadius | undefined {
   const sample = options.sample ?? 400;
@@ -214,7 +238,9 @@ export function describeBlast(radius: BlastRadius): string {
   const share = ((radius.diverging / radius.sampled) * 100).toFixed(1);
 
   if (radius.conditions.length === 0) {
-    return `Diverges on ${share}% of generated inputs; no single condition describes them.`;
+    return radius.diverging < MIN_SUPPORT
+      ? `Diverges on ${share}% of generated inputs, too few to say where.`
+      : `Diverges on ${share}% of generated inputs; no single condition describes them.`;
   }
 
   const clauses = radius.conditions.map(

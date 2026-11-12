@@ -15,7 +15,7 @@ export const GENERATED_RUN: RunResult = {
   "command": "qed check --base origin/main",
   "changedFunctions": 7,
   "verifiableFunctions": 4,
-  "duration": "0.3s",
+  "duration": "0.6s",
   "runs": [
     {
       "path": "billing/ledger.ts",

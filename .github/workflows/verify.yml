@@ -7,7 +7,7 @@ on:
 
 # `pnpm verify` is the definition of done, so CI runs exactly that - it builds,
 # typechecks, lints, runs the unit and type tests, produces fresh evidence with
-# Playwright, and then evaluates the ten gates. Any one of them failing fails
+# Playwright, and then evaluates the eleven gates. Any one of them failing fails
 # the build; that includes the ESLint rule that rejects a hex, px or rgb()
 # literal outside packages/tokens.
 #

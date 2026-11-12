@@ -30,7 +30,7 @@ pnpm verify                                          # the definition of done
 ## The rules the build enforces
 
 `pnpm verify` builds, typechecks, lints, runs the tests, produces fresh
-evidence with Playwright, and then evaluates ten gates. It exits non-zero on any
+evidence with Playwright, and then evaluates eleven gates. It exits non-zero on any
 failure.
 
 | | |
@@ -45,6 +45,7 @@ failure.
 | **G8** | axe-core, zero violations, every route, both themes. |
 | **G9** | The marketing site ships under 40KB of gzipped JS. It currently ships 880 bytes. |
 | **G10** | The attestation renders to PDF, and the three verdict glyphs stay apart in greyscale — at full size and at the 9px they ship at. |
+| **G11** | QED verifies every exported function in its own packages against itself. None may diverge, and the number verified may not fall below a floor. |
 
 Each gate lives in its own file under `scripts/gates/`, with its exemptions and
 the reason for each beside the code that applies them. `scripts/verify.ts` only
@@ -68,6 +69,7 @@ one, a realistic violation of the property it names that would still pass:
 | **G8** | axe finds a minority of WCAG failures. It does not judge focus order, whether a label is a good label, or whether the page makes sense. The keyboard walkthrough in `flows.spec.ts` covers some of that; a reader covers the rest. |
 | **G9** | It budgets JavaScript. The stylesheet, the four woff2 files and every image are unbudgeted — the marketing site ships ~80KB of fonts against 880 bytes of script. |
 | **G10** | It compares glyph shapes registered on their ink, and reads the printed DOM back. It never inspects the PDF's own content: that it says the right words, or paginates sanely. |
+| **G11** | A function compared with itself cannot reveal a false EQUIVALENT between two different versions. That is what `tests/unit/soundness.test.ts` covers, one case per false claim ever found. |
 
 
 ## Scripts
@@ -93,6 +95,15 @@ pnpm qed check --base origin/main [--inputs 1000] [--tolerance float=1e-9,rel=1e
 pnpm qed repro <file> <symbol> --input '<json-array>' [--base <ref>]
 pnpm qed verify --digest <sha256, or 16+ hex characters of it>
 ```
+
+`check` verifies every exported function in a changed file, and every function
+in an unchanged file that imports a changed one; those rows say `via <file>`.
+Parameter types are read by the TypeScript checker over the module and the
+relative imports it pins, so imported interfaces, `Partial`, `Pick`, `Record`,
+branded numbers, `Date`, `Map`, `Set` and callbacks all generate. A callback's
+calls are part of the result. A package import is refused only by the
+functions that use it, and one function's verification is stopped after a
+minute rather than hanging the run.
 
 `check` writes one record per function to `.qed/records/`, named by digest,
 and prints every digest on stderr so the run's log keeps a copy the records
@@ -122,7 +133,7 @@ has nothing to install.
 ## CI
 
 `.github/workflows/verify.yml` runs `pnpm verify` on every push and pull
-request — the same command, the same ten gates. The ESLint rule that rejects a
+request — the same command, the same eleven gates. The ESLint rule that rejects a
 hex, px or `rgb()` literal outside `packages/tokens` fails the build there.
 
 ## Visual regression

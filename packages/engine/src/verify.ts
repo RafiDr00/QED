@@ -4,11 +4,14 @@ import type { Verdict } from "@qed/ui/model";
 import { blastRadius, describeBlast, type BlastRadius } from "./blast.js";
 import { equals, show, EXACT, type Tolerance } from "./compare.js";
 import { encodeArgs } from "./encode.js";
+import { dependencySources } from "./exports.js";
 import { generatorFor, mineCorpus } from "./generate.js";
 import {
   callFunction,
   callTwice,
   loadModule,
+  withinBudget,
+  BudgetExceeded,
   DEFAULT_CONTROLS,
   type CallOutcome,
   type Controls,
@@ -42,6 +45,11 @@ export interface VerifyOptions {
   /** Supplies the source of a pinned relative import, per version. */
   readonly resolveBase?: Resolver;
   readonly resolveHead?: Resolver;
+  /**
+   * Milliseconds the whole verification of one function may take. Past it,
+   * the function abstains rather than hanging the run. Default one minute.
+   */
+  readonly budgetMs?: number;
 }
 
 export interface VerifyRequest {
@@ -76,6 +84,7 @@ export interface VerifyResult {
 }
 
 const DEFAULT_INPUTS = 1000;
+const DEFAULT_BUDGET_MS = 60_000;
 
 /**
  * The second ambient differs by an awkward amount on purpose.
@@ -99,14 +108,36 @@ export function reproCommand(
   return `qed repro ${fileName} ${symbol} --input '${encodeArgs(args)}'`;
 }
 
+/**
+ * One call, with the calls it made to any callback it was given.
+ *
+ * Each call gets its own copy of the arguments, and so its own callbacks:
+ * what one call did to its input, or asked of a callback, cannot leak into
+ * the next.
+ */
+export type Observed = CallOutcome;
+
+export function observe(
+  sandbox: Sandbox,
+  symbol: string,
+  args: readonly unknown[],
+): Observed {
+  return callFunction(sandbox, symbol, args);
+}
+
 /** What a reader is shown for one side of a divergence. */
-function showOutcome(outcome: CallOutcome): string {
+function showOutcome(outcome: Observed): string {
   if (outcome.obstruction !== undefined) return outcome.obstruction;
+  let shown: string;
   if (outcome.kind === "threw") {
     const e = outcome.value as { name?: string; message?: string } | undefined;
-    return e?.name ? `threw ${e.name}: ${e.message ?? ""}`.trim() : "threw";
+    shown = e?.name ? `threw ${e.name}: ${e.message ?? ""}`.trim() : "threw";
+  } else {
+    shown = show(outcome.value);
   }
-  return show(outcome.value);
+  return outcome.calls === undefined
+    ? shown
+    : `${shown} · callbacks received ${show(outcome.calls.length === 1 ? outcome.calls[0] : outcome.calls)}`;
 }
 
 /**
@@ -119,8 +150,8 @@ function showOutcome(outcome: CallOutcome): string {
  * a verdict that rested on one.
  */
 function sameOutcome(
-  a: CallOutcome,
-  b: CallOutcome,
+  a: Observed,
+  b: Observed,
   tolerance: Tolerance,
   applied?: Set<string>,
 ): boolean {
@@ -128,7 +159,8 @@ function sameOutcome(
     return a.obstruction === b.obstruction;
   }
   if (a.kind !== b.kind) return false;
-  const comparison = equals(a.value, b.value, tolerance);
+  // What was returned, and what was asked of every callback on the way.
+  const comparison = equals([a.value, a.calls], [b.value, b.calls], tolerance);
   if (comparison.equal && applied) {
     for (const t of comparison.applied) applied.add(t);
   }
@@ -155,8 +187,8 @@ export type Finding =
   | { readonly kind: "blocked"; readonly obstruction: string }
   | {
       readonly kind: "diverged";
-      readonly base: CallOutcome;
-      readonly head: CallOutcome;
+      readonly base: Observed;
+      readonly head: Observed;
     };
 
 /**
@@ -173,17 +205,17 @@ export function examine(
   tolerance: Tolerance,
   applied?: Set<string>,
 ): Finding {
-  const baseA = callFunction(pair.baseA, symbol, structuredClone(args));
+  const baseA = observe(pair.baseA, symbol, args);
   if (baseA.obstruction !== undefined) {
     return { kind: "blocked", obstruction: baseA.obstruction };
   }
-  const headA = callFunction(pair.headA, symbol, structuredClone(args));
+  const headA = observe(pair.headA, symbol, args);
   if (headA.obstruction !== undefined) {
     return { kind: "blocked", obstruction: headA.obstruction };
   }
 
-  const baseB = callFunction(pair.baseB, symbol, structuredClone(args));
-  const headB = callFunction(pair.headB, symbol, structuredClone(args));
+  const baseB = observe(pair.baseB, symbol, args);
+  const headB = observe(pair.headB, symbol, args);
   if (
     !sameOutcome(baseA, baseB, tolerance, applied) ||
     !sameOutcome(headA, headB, tolerance, applied)
@@ -207,6 +239,31 @@ export function verify(
   request: VerifyRequest,
   options: VerifyOptions = {},
 ): VerifyResult {
+  const budget = options.budgetMs ?? DEFAULT_BUDGET_MS;
+  try {
+    return withinBudget(() => verifyUnbounded(request, options), budget);
+  } catch (error) {
+    if (!(error instanceof BudgetExceeded)) throw error;
+    // Which input looped is not knowable from here; that one did is.
+    return {
+      verdict: {
+        state: "ABSTAINED",
+        obstruction: `does not finish within ${formatBudget(budget)} on the generated inputs`,
+      },
+      tolerancesApplied: [],
+      controls: options.controls ?? DEFAULT_CONTROLS,
+    };
+  }
+}
+
+function formatBudget(ms: number): string {
+  return ms % 1000 === 0 ? `${ms / 1000}s` : `${ms}ms`;
+}
+
+function verifyUnbounded(
+  request: VerifyRequest,
+  options: VerifyOptions,
+): VerifyResult {
   const { fileName, symbol, base, head } = request;
   const controls = options.controls ?? DEFAULT_CONTROLS;
   const other = otherAmbient(controls);
@@ -221,7 +278,21 @@ export function verify(
 
   // Inputs come from the contract existing callers rely on: the base version's
   // declared types, seeded with the constants written in either version.
-  const generation = generatorFor(base, fileName, symbol, mineCorpus(base, head));
+  // The two versions' constants first, so they lead the notable values; then
+  // whatever the pinned dependencies on either side write down.
+  const corpus = mineCorpus(
+    base,
+    head,
+    ...dependencySources(base, fileName, options.resolveBase),
+    ...dependencySources(head, fileName, options.resolveHead),
+  );
+  const generation = generatorFor(
+    base,
+    fileName,
+    symbol,
+    corpus,
+    options.resolveBase,
+  );
   if (generation.kind === "unsupported") return abstain(generation.obstruction);
 
   let pair: Pair;
@@ -250,15 +321,15 @@ export function verify(
         [base, options.resolveBase],
         [head, options.resolveHead],
       ] as const) {
-        const reference = callFunction(
+        const reference = observe(
           loadModule(source, fileName, controls, resolve),
           symbol,
-          structuredClone(args),
+          args,
         );
-        const moved = callFunction(
+        const moved = observe(
           loadModule(source, fileName, changed, resolve),
           symbol,
-          structuredClone(args),
+          args,
         );
         if (!sameOutcome(reference, moved, tolerance)) return reason;
       }
@@ -377,7 +448,7 @@ export function verify(
     symbol,
     generation,
     tolerance,
-    mineCorpus(base, head).numbers,
+    corpus,
     { seed: options.seed ?? 0 },
   );
 

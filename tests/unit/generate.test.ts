@@ -96,7 +96,12 @@ describe("it refuses, and names the parameter", () => {
     ["object", `export function f(cfg: object) {}`, "parameter `cfg` is `object`, so there is no shape to generate from"],
     ["rest", `export function f(...rest: number[]) {}`, "parameter `rest` is a rest parameter, which QED cannot generate"],
     ["an imported type", `export function f(cfg: Buffer) {}`, "parameter `cfg` is `Buffer`, which QED cannot generate"],
-    ["a function type", `export function f(cb: () => void) {}`, "parameter `cb` is a type QED cannot generate"],
+    ["a class instance", `class Money { constructor(public cents: number) {} }
+export function f(m: Money) {}`, "parameter `m` is the class `Money`, which QED cannot construct"],
+    ["a promise", `export function f(p: Promise<number>) {}`, "parameter `p` is `Promise`, which QED cannot generate"],
+    ["an unconstrained type parameter", `export function f<T>(x: T) {}`, "parameter `x` is the type parameter `T` with no constraint, so there is no shape to generate from"],
+    ["a type imported from a file that is not pinned", `import type { Order } from "./types";
+export function f(o: Order) {}`, "parameter `o` is `Order`, which QED cannot generate"],
   ];
 
   for (const [label, src, obstruction] of cases) {
