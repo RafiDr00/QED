@@ -145,13 +145,19 @@ export function Home() {
                       </li>
                     ))}
                   </ul>
-                  <a
-                    className="qed-button web-tier-cta"
-                    data-variant={tier.primary === true ? "primary" : "secondary"}
-                    href={href("docs/#install")}
-                  >
-                    {tier.price === "Talk to us" ? "Contact sales" : "Start"}
-                  </a>
+                  {tier.available ? (
+                    <a
+                      className="qed-button web-tier-cta"
+                      data-variant={tier.primary === true ? "primary" : "secondary"}
+                      href={href("docs/#install")}
+                    >
+                      Install
+                    </a>
+                  ) : (
+                    <p className="t-body-sm web-tier-planned">
+                      <Label>PLANNED</Label> Nothing here can be bought yet.
+                    </p>
+                  )}
                 </Card>
               </li>
             ))}

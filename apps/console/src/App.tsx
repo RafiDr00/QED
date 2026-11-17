@@ -1,13 +1,17 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  Button,
   Label,
   Logo,
   ThemeToggle,
+  signedRunFor,
   verifyRecord,
+  UNSIGNED,
   type AttestationRecord,
   type VerificationState,
 } from "@qed/ui";
 
+import { BundleContext, latestRun, useBundleState, type Loaded } from "./bundle.js";
 import { ROUTES, titleOf, useRoute } from "./router.js";
 import { AttestationsView } from "./views/AttestationsView.js";
 import { ExportView } from "./views/ExportView.js";
@@ -20,29 +24,88 @@ import { VerdictsView } from "./views/VerdictsView.js";
  * view - the keyboard walkthrough test depends on exactly that order.
  */
 
+/**
+ * Verification, as far as a browser can take it.
+ *
+ * The digest is re-derived from the record's own fields. Then the signature
+ * claim: an unsigned record says so; a signed one must be listed, exactly as
+ * it reads, by a signed run in the bundle. The certificate chain and Rekor's
+ * inclusion proof need `qed verify`, and the result says that rather than
+ * implying it checked them.
+ */
+async function verifyInBrowser(record: AttestationRecord, loaded: Loaded): Promise<VerificationState> {
+  const digest = await verifyRecord(record, new Date());
+  if (digest.status !== "verified") return digest;
+
+  if (record.signer === UNSIGNED) {
+    return { ...digest, detail: "Unsigned: nothing in it says who ran it." };
+  }
+  const signed = await signedRunFor(record, loaded.bundle.signatures);
+  if (!signed) {
+    return {
+      status: "mismatch",
+      detail:
+        "The digest re-derives, but no signed run in this bundle lists the record as it reads. Do not rely on it.",
+    };
+  }
+  return {
+    ...digest,
+    detail:
+      `A signed run lists it, signed by ${record.signer} and logged at Rekor index ${record.rekorIndex}. ` +
+      "qed verify checks that certificate and the log's inclusion proof; a browser cannot.",
+  };
+}
+
 export function App() {
   const route = useRoute();
+  const state = useBundleState();
+  const { loaded, refusal, open, reset } = state;
+  const picker = useRef<HTMLInputElement>(null);
 
-  // Verification is real state the shell owns; the card is controlled.
-  const [verification, setVerification] = useState<
-    Record<string, VerificationState>
-  >({});
+  // Verification is real state the shell owns; the card is controlled. It
+  // belongs to one bundle: opening another starts every card from idle.
+  const [verification, setVerification] = useState<{
+    readonly text: string;
+    readonly states: Record<string, VerificationState>;
+  }>({ text: loaded.text, states: {} });
+  const states = verification.text === loaded.text ? verification.states : {};
 
-  /**
-   * Really re-derives: recomputes the digest from the record's own signed
-   * fields and compares it with the one the record carries. The time reported
-   * is the time the check ran, not the record's signing time.
-   */
   const verify = (record: AttestationRecord) => {
-    const set = (state: VerificationState) => {
-      setVerification((current) => ({ ...current, [record.digest]: state }));
+    const forText = loaded.text;
+    const set = (next: VerificationState) => {
+      setVerification((current) => ({
+        text: forText,
+        states: { ...(current.text === forText ? current.states : {}), [record.digest]: next },
+      }));
     };
     set({ status: "checking" });
-    void verifyRecord(record, new Date()).then(set);
+    void verifyInBrowser(record, loaded).then(set);
   };
 
+  // A bundle dropped anywhere on the page is opened.
+  useEffect(() => {
+    const over = (event: DragEvent) => {
+      if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
+    };
+    const drop = (event: DragEvent) => {
+      const file = event.dataTransfer?.files[0];
+      if (!file) return;
+      event.preventDefault();
+      void open(file);
+    };
+    window.addEventListener("dragover", over);
+    window.addEventListener("drop", drop);
+    return () => {
+      window.removeEventListener("dragover", over);
+      window.removeEventListener("drop", drop);
+    };
+  }, [open]);
+
+  const run = latestRun(loaded);
+  const signedCount = loaded.bundle.records.filter((r) => r.signer !== UNSIGNED).length;
+
   return (
-    <>
+    <BundleContext.Provider value={state}>
       <a className="qed-skip-link" href="#main">
         Skip to content
       </a>
@@ -55,13 +118,28 @@ export function App() {
               wordmark in a font" (components/Logotype/README.md).
             */}
             <Logo variant="lockup" size="sm" title="QED" />
-            <span className="con-repo t-mono-sm">acme/ledger</span>
+            <span className="con-repo t-mono-sm">{loaded.bundle.repository}</span>
           </span>
           <div className="con-header-actions">
-            <Label>BRANCH</Label>
-            <span className="t-mono-sm con-branch">
-              feat/vat-rounding &rarr; main
+            <Label>BUNDLE</Label>
+            <span className="t-mono-sm con-branch" data-testid="bundle-source">
+              {loaded.source} &middot; {loaded.bundle.records.length} records &middot;{" "}
+              {signedCount} signed
             </span>
+            <input
+              ref={picker}
+              type="file"
+              accept=".json,application/json"
+              hidden
+              aria-label="Audit bundle file"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                if (file) void open(file);
+                event.currentTarget.value = "";
+              }}
+            />
+            <Button onClick={() => picker.current?.click()}>Open bundle</Button>
+            {loaded.example ? null : <Button onClick={reset}>Back to the example</Button>}
             <ThemeToggle />
           </div>
         </div>
@@ -86,15 +164,20 @@ export function App() {
 
         <main id="main" className="con-main" tabIndex={-1}>
           <h1 className="t-display-sm con-title">{titleOf(route)}</h1>
-          {route === "run" ? <RunView /> : null}
-          {route === "verdicts" ? <VerdictsView /> : null}
+          {refusal === undefined ? null : (
+            <p className="t-body-sm qed-prose con-refusal" role="alert">
+              {refusal}
+            </p>
+          )}
+          {route === "run" ? <RunView run={run} /> : null}
+          {route === "verdicts" ? <VerdictsView run={run} /> : null}
           {route === "attestations" ? (
-            <AttestationsView verification={verification} onVerify={verify} />
+            <AttestationsView run={run} verification={states} onVerify={verify} />
           ) : null}
-          {route === "release" ? <ReleaseView /> : null}
-          {route === "export" ? <ExportView /> : null}
+          {route === "release" ? <ReleaseView loaded={loaded} /> : null}
+          {route === "export" ? <ExportView loaded={loaded} /> : null}
         </main>
       </div>
-    </>
+    </BundleContext.Provider>
   );
 }

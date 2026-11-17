@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { DEFAULT_CONTROLS, type Controls, type VerifyResult } from "@qed/engine";
 import {
   reDeriveDigest,
-  VERDICT_STATES,
+  recordProblem,
+  NOT_LOGGED,
+  UNSIGNED,
   type AttestationRecord,
   type FunctionRun,
 } from "@qed/ui/model";
@@ -31,8 +33,7 @@ export const DEFAULT_RECORDS_DIR = ".qed/records";
  * made without `--sign` says so in those fields, rather than leaving them
  * blank for a reader to fill in. signing.ts fills them when a run is signed.
  */
-export const UNSIGNED = "unsigned";
-export const NOT_LOGGED = "not logged";
+export { NOT_LOGGED, UNSIGNED };
 
 const DEFAULT_STRATEGY = "type-directed, corpus-seeded";
 
@@ -183,57 +184,6 @@ export function matchesDigest(digest: string, query: DigestQuery): boolean {
   );
 }
 
-const isString = (v: unknown): v is string => typeof v === "string";
-const isStrings = (v: unknown): v is string[] =>
-  Array.isArray(v) && v.every(isString);
-
-/** Why `value` is not a record, or undefined when it is one. */
-function malformed(value: unknown): string | undefined {
-  if (typeof value !== "object" || value === null) return "it is not an object";
-  const r = value as Record<string, unknown>;
-  for (const key of [
-    "symbol",
-    "path",
-    "repository",
-    "commit",
-    "timestamp",
-    "inputStrategy",
-    "engine",
-    "signer",
-    "rekorIndex",
-    "digest",
-  ]) {
-    if (!isString(r[key])) return `'${key}' is missing or not text`;
-  }
-  if (!isStrings(r.controls)) return "'controls' is not a list of text";
-  if (!isStrings(r.tolerances)) return "'tolerances' is not a list of text";
-
-  const v = r.verdict as Record<string, unknown> | null | undefined;
-  if (typeof v !== "object" || v === null) return "'verdict' is missing";
-  if (!(VERDICT_STATES as readonly unknown[]).includes(v.state)) {
-    return `'verdict.state' is not one of ${VERDICT_STATES.join(", ")}`;
-  }
-  if (v.state === "EQUIVALENT" && typeof v.inputs !== "number") {
-    return "an EQUIVALENT verdict has no input count";
-  }
-  if (v.state === "EQUIVALENT" && v.threw !== undefined && typeof v.threw !== "number") {
-    return "an EQUIVALENT verdict's throw count is not a number";
-  }
-  if (v.state === "ABSTAINED" && !isString(v.obstruction)) {
-    return "an ABSTAINED verdict has no obstruction";
-  }
-  if (v.state === "DIVERGED") {
-    const c = v.counterexample as Record<string, unknown> | null | undefined;
-    if (typeof c !== "object" || c === null) {
-      return "a DIVERGED verdict has no counterexample";
-    }
-    for (const key of ["input", "base", "head", "repro"]) {
-      if (!isString(c[key])) return `'verdict.counterexample.${key}' is missing`;
-    }
-  }
-  return undefined;
-}
-
 /** Reads one record file, refusing anything that is not a whole record. */
 export function loadRecord(path: string): AttestationRecord {
   let value: unknown;
@@ -244,7 +194,7 @@ export function loadRecord(path: string): AttestationRecord {
       `${path} could not be read as JSON: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  const reason = malformed(value);
+  const reason = recordProblem(value);
   if (reason !== undefined) {
     throw new RecordLookupError(`${path} is not a QED record: ${reason}.`);
   }

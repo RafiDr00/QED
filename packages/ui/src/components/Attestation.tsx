@@ -4,6 +4,7 @@ import type {
   AttestationRecord,
   VerificationState,
 } from "../model/attestation.js";
+import { UNSIGNED } from "../model/bundle.js";
 import { evidenceLine, formatCount } from "../model/verdict.js";
 import { Logo } from "./Logo.js";
 import { Button, Label } from "./primitives.js";
@@ -67,7 +68,7 @@ function VerificationStatus({ state }: { state: VerificationState }) {
       : state.status === "checking"
         ? "Re-deriving the verdict from the record…"
         : state.status === "verified"
-          ? `Re-derived and matched at ${state.checkedAt}.`
+          ? `Re-derived and matched at ${state.checkedAt}.${state.detail === undefined ? "" : ` ${state.detail}`}`
           : state.detail;
   return (
     <p className="qed-verify-status t-body-sm" role="status" data-status={state.status}>
@@ -81,18 +82,22 @@ export function Attestation({
   verification = { status: "idle" },
   onVerify,
 }: AttestationProps) {
-  const titleId = `attestation-${record.commit}-${record.symbol}`;
+  const titleId = `attestation-${record.commit}-${record.path}-${record.symbol}`.replace(/[^\w-]/g, "-");
   const checking = verification.status === "checking";
+  // The seal is for a signed record. An unsigned one says so where the seal
+  // would be, and does not wear the tint that means "signed".
+  const signed = record.signer !== UNSIGNED;
 
   return (
     <article
       className="qed-attestation"
       data-verification={verification.status}
+      data-signed={signed}
       aria-labelledby={titleId}
     >
       <p className="qed-attestation-eyebrow">
         <Logo variant="mark" size="xs" decorative />
-        <Label tone="ink">SIGNED ATTESTATION</Label>
+        <Label tone="ink">{signed ? "SIGNED ATTESTATION" : "UNSIGNED ATTESTATION"}</Label>
       </p>
 
       <h2 id={titleId} className="qed-attestation-title t-display-sm">
@@ -131,7 +136,7 @@ export function Attestation({
 
       <div className="qed-attestation-foot">
         <p className="qed-digest t-mono-sm">
-          rekor #{record.rekorIndex} &middot; {record.digest}
+          {signed ? `rekor #${record.rekorIndex}` : "not in rekor"} &middot; {record.digest}
         </p>
         {onVerify ? (
           <Button

@@ -102,6 +102,17 @@
 }
 
 /*
+ * An unsigned record is not sealed: it sits on the plain raised ground with a
+ * neutral rule where the `proof` one would be. The eyebrow says UNSIGNED.
+ * Leaving it on `proof-dim` would have said "signed" about a record nobody
+ * signed. DECISIONS.md D-063.
+ */
+.qed-attestation[data-signed="false"] {
+  background: var(--bg-raised);
+  border-left-color: var(--rule-strong);
+}
+
+/*
  * A record that did not re-derive must not look like a signed one. The seal
  * comes off: the ground drops to `bg-raised`, the left rule turns `break`, and
  * the reason is stated in `break` rather than buried in body copy.

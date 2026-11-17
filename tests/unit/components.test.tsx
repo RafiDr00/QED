@@ -131,6 +131,26 @@ describe("Attestation", () => {
     expect(screen.getByText(/signer: github-actions \(OIDC\)/)).toBeInTheDocument();
   });
 
+  it("does not call an unsigned record signed, nor wear the seal", () => {
+    render(<Attestation record={{ ...RECORD, signer: "unsigned", rekorIndex: "not logged" }} />);
+    expect(screen.getByText("UNSIGNED ATTESTATION")).toBeInTheDocument();
+    expect(screen.queryByText("SIGNED ATTESTATION")).not.toBeInTheDocument();
+    expect(screen.getByText(/not in rekor/)).toBeInTheDocument();
+    expect(screen.getByRole("article")).toHaveAttribute("data-signed", "false");
+  });
+
+  it("reports what else verification checked, when it says", () => {
+    render(
+      <Attestation
+        record={RECORD}
+        verification={{ status: "verified", checkedAt: "2026-11-17 10:00 UTC", detail: "Unsigned: nothing in it says who ran it." }}
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Re-derived and matched at 2026-11-17 10:00 UTC. Unsigned: nothing in it says who ran it.",
+    );
+  });
+
   it("verification is a real action that reports back", async () => {
     const user = userEvent.setup();
     const onVerify = vi.fn();

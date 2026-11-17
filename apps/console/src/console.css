@@ -30,6 +30,7 @@
   align-items: center;
   gap: var(--space-3);
   margin-left: auto;
+  flex-wrap: wrap;
 }
 
 .con-body {
@@ -127,4 +128,16 @@
   .con-main {
     padding: var(--space-6) var(--space-4) var(--space-12);
   }
+}
+
+/* A file that was not opened says why, in the colour of a failure. */
+.con-refusal {
+  color: var(--break);
+  margin-bottom: var(--space-6);
+}
+
+/* A digest is one unbroken token; it wraps anywhere rather than overflowing. */
+.con-digest {
+  overflow-wrap: anywhere;
+  margin: var(--space-4) 0;
 }

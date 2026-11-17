@@ -24,7 +24,7 @@ pnpm verify                                          # the definition of done
 | `packages/cli` | `qed check`, `qed repro`, `qed verify`. Reads the diff from git, writes the records. |
 | `examples/ledger` | The code the published run is made from: `pnpm generate:run` executes the engine over it. |
 | `apps/web` | The marketing site. Prerendered to static HTML — React runs at build time only. |
-| `apps/console` | The product shell: run, verdicts, attestations, release evidence, audit export. Typed fixtures, no network. |
+| `apps/console` | The product shell: run, verdicts, attestations, release evidence, audit export. It renders an audit bundle: by default a real run over `examples/ledger`, or one a reader opens. No network. |
 | `tests/gallery` | The component index the evidence run shoots. Never shipped. |
 
 ## The rules the build enforces
@@ -83,7 +83,7 @@ one, a realistic violation of the property it names that would still pass:
 | `pnpm e2e` | Playwright: evidence, flows, visual regression. |
 | `pnpm measure:fonts` | Re-measure the metric-matched fallbacks. Fails above a 1% residual shift. |
 | `pnpm build:logos` | Regenerate the typed logo module from the SVGs. |
-| `pnpm generate:run` | Re-run the engine over `examples/ledger` and rewrite the run both apps display. |
+| `pnpm generate:run` | Re-run the engine over `examples/ledger` and rewrite the run the site prints and the bundle the console opens. |
 | `pnpm qed <command>` | The CLI from source, through tsx. |
 | `pnpm build:cli` | Bundle the CLI into one file, `packages/cli/dist/qed.cjs`. |
 | `pnpm build:binary` | Wrap that into a single executable for this machine, `dist/bin/qed-<platform>-<arch>`. |
@@ -94,6 +94,7 @@ one, a realistic violation of the property it names that would still pass:
 pnpm qed check --base origin/main [--inputs 1000] [--tolerance float=1e-9,rel=1e-12] [--records <dir>]
 pnpm qed repro <file> <symbol> --input '<json-array>' [--base <ref>]
 pnpm qed verify --digest <sha256, or 16+ hex characters of it>
+pnpm qed export [--records <dir>] [--out <file>]
 ```
 
 `check` verifies every exported function in a changed file, and every function
@@ -124,6 +125,16 @@ the Rekor index `not logged`. `pnpm refresh:trusted-root` re-fetches the root
 through TUF; `verify --trusted-root <file>` takes a newer one without a
 rebuild. `.github/workflows/sigstore.yml` signs a real run on every push and
 verifies it with the network switched off.
+
+`check` also writes `run-<id>.json` beside the records: the command it echoed
+and how long it took, which records cannot carry. `export` gathers every
+record, run summary and signed run in a directory, with the tags pointing at
+each commit, into one audit bundle, and prints its digest. The console opens
+that file with no network, takes every count from the records themselves
+rather than from a summary nothing signs, re-derives each digest, and checks
+that a signed record is listed by a signed run in the bundle. The certificate
+chain and Rekor's inclusion proof are `verify`'s to check; the console says
+so.
 
 Exit codes: 0 nothing diverged (or the record verified), 1 something diverged
 (or the record was altered), 2 the run could not start or finish.

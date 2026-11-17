@@ -4,7 +4,29 @@ Every change that alters what `qed` does, what it claims, or what a record
 contains. The version a record names as its engine is the one in
 `packages/cli/package.json`, and a release tag must match it.
 
-## 0.3.0 (unreleased)
+## 0.4.0 (unreleased)
+
+The console shows what was really produced, and nothing claims what is not
+there.
+
+- `qed check` writes a run summary beside its records: the command and how
+  long it took.
+- `qed export` gathers a records directory into one audit bundle, with the
+  tags pointing at each commit, and prints its digest.
+- The console opens a bundle by button or drag and drop, with no network. By
+  default it opens a real engine run over `examples/ledger`. Every count comes
+  from the records; a summary cannot change one.
+- Verify in the console re-derives the digest and checks that a signed record
+  is listed by a signed run in the bundle. A record edited inside a bundle
+  fails.
+- The export view downloads the exact bytes it shows the digest of.
+- The release view's abstain rate is abstained over changed functions, the
+  same ratio as the home page.
+- An unsigned record's card says UNSIGNED and drops the signed tint.
+- Pricing lists only what exists. Team and Enterprise are marked planned.
+- The typed-in console fixtures are gone.
+
+## 0.3.0 (2026-11-17)
 
 Records can now say who ran them, in a way anyone can check without asking us.
 
