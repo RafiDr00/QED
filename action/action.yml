@@ -1,0 +1,221 @@
+name: QED check
+description: >
+  Run every changed function against the version it replaces, and say on the
+  pull request which ones now return something different - with the input
+  that shows it.
+author: RafiDr00
+branding:
+  icon: check-square
+  color: green
+
+# Use it after actions/checkout with fetch-depth: 0, so the base is there to
+# compare against:
+#
+#   permissions:
+#     contents: read
+#     pull-requests: write   # the comment
+#     id-token: write        # signing; leave it out to skip signing
+#   steps:
+#     - uses: actions/checkout@v4
+#       with: { fetch-depth: 0 }
+#     - uses: RafiDr00/QED/action@v0.5.0
+
+inputs:
+  base:
+    description: >
+      Ref to compare against. Defaults to the pull request's base commit, or
+      origin/main outside a pull request.
+    default: ""
+  version:
+    description: The qed release to install, e.g. v0.5.0.
+    default: latest
+  qed:
+    description: >
+      A qed command to run instead of installing one, e.g.
+      "node packages/cli/dist/qed.cjs". For testing qed itself.
+    default: ""
+  working-directory:
+    description: Where to run, inside the repository.
+    default: "."
+  inputs:
+    description: Generated inputs per function.
+    default: "1000"
+  tolerance:
+    description: A tolerance, e.g. "float=1e-9,rel=1e-12". Every one applied is recorded.
+    default: ""
+  sign:
+    description: >
+      "auto" signs with Sigstore when the job has id-token: write, "true"
+      requires it, "false" never signs.
+    default: auto
+  comment:
+    description: Keep one comment on the pull request up to date with the result.
+    default: "true"
+  annotate:
+    description: Mark each divergence on the line its function starts on.
+    default: "true"
+  sarif:
+    description: >
+      Upload a SARIF report to code scanning. Needs security-events: write,
+      and GitHub Advanced Security on a private repository.
+    default: "false"
+  fail-on-divergence:
+    description: Fail the job when a function diverged. Abstaining never fails it.
+    default: "true"
+  artifact-name:
+    description: Name of the artifact holding the records and the audit bundle.
+    default: qed-records
+  github-token:
+    description: Token for the comment.
+    default: ${{ github.token }}
+
+outputs:
+  exit-code:
+    description: 0 nothing diverged, 1 something diverged, 2 the run could not finish.
+    value: ${{ steps.check.outputs.exit-code }}
+  diverged:
+    description: How many functions diverged.
+    value: ${{ steps.check.outputs.diverged }}
+  equivalent:
+    description: How many functions were equivalent.
+    value: ${{ steps.check.outputs.equivalent }}
+  abstained:
+    description: How many functions abstained.
+    value: ${{ steps.check.outputs.abstained }}
+  report:
+    description: Path to the JSON report.
+    value: ${{ steps.check.outputs.report }}
+  sarif:
+    description: Path to the SARIF report.
+    value: ${{ steps.check.outputs.sarif }}
+  bundle:
+    description: Path to the audit bundle the console opens.
+    value: ${{ steps.check.outputs.bundle }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install qed
+      if: inputs.qed == ''
+      shell: bash
+      env:
+        QED_VERSION: ${{ inputs.version }}
+        QED_INSTALL_DIR: ${{ runner.temp }}/qed-bin
+      run: |
+        # The same installer the docs print, from this action's own checkout:
+        # it checks the binary against the release's SHA256SUMS, and the
+        # SHA256SUMS signature when cosign is on the runner.
+        sh "$GITHUB_ACTION_PATH/../apps/web/public/install.sh"
+        echo "QED_CMD=$QED_INSTALL_DIR/qed" >> "$GITHUB_ENV"
+
+    - name: Use the qed given
+      if: inputs.qed != ''
+      shell: bash
+      env:
+        GIVEN: ${{ inputs.qed }}
+      run: echo "QED_CMD=$GIVEN" >> "$GITHUB_ENV"
+
+    - name: Run qed check
+      id: check
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        BASE_INPUT: ${{ inputs.base }}
+        PR_BASE: ${{ github.event.pull_request.base.sha }}
+        INPUTS: ${{ inputs.inputs }}
+        TOLERANCE: ${{ inputs.tolerance }}
+        SIGN: ${{ inputs.sign }}
+        ANNOTATE: ${{ inputs.annotate }}
+      run: |
+        # GitHub runs bash with -e; exit 1 from qed means "diverged", which
+        # this step reports rather than dies on.
+        set +e -u
+        base="${BASE_INPUT:-${PR_BASE:-origin/main}}"
+
+        # The diff needs history back to where the branch left the base. A
+        # shallow checkout has none, so fetch what is missing.
+        if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+          git fetch --no-tags --quiet --unshallow origin || true
+        fi
+        if ! git rev-parse --verify --quiet "$base^{commit}" > /dev/null; then
+          git fetch --no-tags --quiet origin "$base" || true
+        fi
+
+        out="$RUNNER_TEMP/qed"
+        mkdir -p "$out"
+        args=(check --base "$base" --no-color --inputs "$INPUTS"
+          --json "$out/report.json" --sarif "$out/qed.sarif" --markdown "$out/comment.md")
+        if [ -n "$TOLERANCE" ]; then args+=(--tolerance "$TOLERANCE"); fi
+        case "$SIGN" in
+          true) args+=(--sign) ;;
+          auto) if [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then args+=(--sign); fi ;;
+        esac
+
+        # QED_CMD is word-split on purpose, so "node path/qed.cjs" works.
+        $QED_CMD "${args[@]}"
+        code=$?
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        if [ "$code" -ge 2 ]; then
+          echo "::error title=QED::qed check could not finish (exit $code). The log above says why."
+          exit "$code"
+        fi
+
+        records="$(git rev-parse --show-toplevel)/.qed/records"
+        if [ -d "$records" ]; then
+          $QED_CMD export --records "$records" --out "$out/qed-bundle.json" || true
+        fi
+
+        node -e '
+          const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+          const s = r.summary;
+          console.log(`diverged=${s.diverged}\nequivalent=${s.equivalent}\nabstained=${s.abstained}`);
+        ' "$out/report.json" >> "$GITHUB_OUTPUT"
+        {
+          echo "report=$out/report.json"
+          echo "sarif=$out/qed.sarif"
+          echo "markdown=$out/comment.md"
+          echo "records=$records"
+          if [ -f "$out/qed-bundle.json" ]; then echo "bundle=$out/qed-bundle.json"; fi
+        } >> "$GITHUB_OUTPUT"
+
+        if [ "$ANNOTATE" = "true" ]; then
+          node "$GITHUB_ACTION_PATH/github.mjs" annotate "$out/report.json"
+        fi
+        cat "$out/comment.md" >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Keep the records
+      if: always() && steps.check.outputs.report != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: |
+          ${{ steps.check.outputs.records }}
+          ${{ steps.check.outputs.bundle }}
+          ${{ steps.check.outputs.report }}
+          ${{ steps.check.outputs.sarif }}
+        if-no-files-found: ignore
+
+    - name: Comment on the pull request
+      if: always() && inputs.comment == 'true' && github.event_name == 'pull_request' && steps.check.outputs.markdown != ''
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        COMMENT: ${{ steps.check.outputs.markdown }}
+      run: node "$GITHUB_ACTION_PATH/github.mjs" comment "$COMMENT"
+
+    - name: Upload SARIF
+      if: always() && inputs.sarif == 'true' && steps.check.outputs.sarif != ''
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ steps.check.outputs.sarif }}
+        category: qed
+
+    - name: Fail on divergence
+      if: inputs.fail-on-divergence == 'true' && steps.check.outputs.exit-code == '1'
+      shell: bash
+      env:
+        DIVERGED: ${{ steps.check.outputs.diverged }}
+      run: |
+        echo "::error title=QED::$DIVERGED function(s) diverged. The comment and the annotations show the input for each."
+        exit 1

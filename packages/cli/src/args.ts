@@ -24,7 +24,7 @@ export interface CommandSpec {
 
 export const COMMANDS = {
   check: {
-    named: ["base", "inputs", "tolerance", "records"],
+    named: ["base", "inputs", "tolerance", "records", "json", "sarif", "markdown"],
     switches: ["no-color", "sign"],
   },
   repro: { named: ["base", "input"], switches: [] },

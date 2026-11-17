@@ -791,3 +791,56 @@ features - retained records, a release dashboard, audit export - that are
 either not built or are free in the CLI and console. The free tier now lists
 what exists. The others are marked PLANNED, carry no price and no button, and
 list nothing a reader could mistake for available.
+
+---
+
+## Where people meet it
+
+### D-064 · One run, four readers, built from the same records
+
+The terminal output is for a person reading a log. A CI system needs the run
+as data, code scanning needs SARIF, and a reviewer needs it on the pull
+request. `qed check --json`, `--sarif` and `--markdown` write those from the
+same result and the same records as the terminal, so none of them can say
+something the others do not. Each verdict now carries the line its function
+starts on in the new version, which is where SARIF and the annotations point.
+
+In SARIF a divergence is an error and an abstention is a note, each on that
+line. An equivalence is not a finding, so it is not reported. Each result has
+a fingerprint of its function and verdict, so code scanning tracks one alert
+per function across pushes rather than opening a new one each time.
+
+The comment puts divergences first, because they are what a reviewer has to
+look at. Each comes with its input, both results, its repro line and where
+the change bites. Abstentions follow with their reasons, then equivalences
+with their counts, then the terminal output as the log printed it. Values are
+put in code spans that survive backticks, and table cells escape pipes, so an
+input such as `"a|b"` cannot break the table. A run with nothing verifiable
+still writes all three reports, so the comment says so rather than vanishing.
+
+### D-065 · The action reports on the pull request, and fails only on a divergence
+
+`action/action.yml` is a composite action with no build step. It installs the
+release through the same `install.sh` the docs print, from its own checkout,
+so the checksum and signature checks apply. It runs the check, writes the
+step summary, and keeps the records and the bundle as an artifact. It then
+does three things on the pull request:
+
+- It keeps one comment. It finds its own comment by a marker and updates it,
+  so a pull request pushed to twenty times has one comment, not twenty.
+- It annotates each divergence with a workflow command on the line its
+  function starts. That puts it on the diff with no code scanning and no
+  Advanced Security.
+- It uploads SARIF when asked.
+
+It fails the job only when a function diverged and `fail-on-divergence` is
+true. Abstaining never fails it. A token that cannot comment, as on a pull
+request from a fork, is reported in the log and does not fail the check the
+comment would have described.
+
+`.github/workflows/qed.yml` tests the action end to end against a repository
+whose answer is known: a changed helper, and an unchanged file that diverges
+through it. It checks the exit code, the counts, the line, the SARIF, the
+bundle, and that the strict setting fails the job. It also runs the action on
+every pull request to QED itself. There it reports without failing the
+build, because most of QED's diffs change behaviour on purpose.

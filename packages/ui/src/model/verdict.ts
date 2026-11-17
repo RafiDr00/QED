@@ -82,6 +82,12 @@ export interface FunctionRun {
    * function is in the run only for that reason. "via pricing/rate.ts".
    */
   readonly via?: string;
+  /**
+   * The 1-based line the function starts on in the new version, so a CI
+   * annotation or a SARIF result can point at it. Absent when the new
+   * version no longer exports it.
+   */
+  readonly line?: number;
 }
 
 export interface RunResult {

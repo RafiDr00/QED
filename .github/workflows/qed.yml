@@ -1,0 +1,154 @@
+name: qed
+
+# The QED GitHub Action, run two ways.
+#
+# `action` runs it from this checkout against a small repository whose answer
+# is known - a changed helper and the unchanged file that imports it - and
+# checks every output: the exit code, the counts, the annotations, the reports
+# and the bundle. It is the action's end-to-end test.
+#
+# `dogfood` runs it on each pull request to QED itself, so every change to QED
+# carries QED's own verdicts: a comment on the pull request, annotations on
+# the lines, a SARIF upload, and signed records. It reports; it does not fail
+# the build, because most of QED's diffs change behaviour on purpose.
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  action:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the CLI
+        run: pnpm build:cli
+
+      - name: A repository with a known answer
+        run: |
+          repo="$RUNNER_TEMP/known"
+          mkdir -p "$repo/pricing"
+          cd "$repo"
+          printf '%s\n' 'export function rate(qty: number): number { return qty > 10 ? 0.9 : 1; }' > pricing/rate.ts
+          printf '%s\n' 'import { rate } from "./rate";' 'export function total(qty: number): number { return Math.round(qty * 100 * rate(qty)); }' > pricing/total.ts
+          git init -q -b main
+          git -c user.email=ci@example.invalid -c user.name=ci add -A
+          git -c user.email=ci@example.invalid -c user.name=ci commit -qm base
+          printf '%s\n' 'export function rate(qty: number): number { return qty >= 10 ? 0.9 : 1; }' > pricing/rate.ts
+          echo "KNOWN=$repo" >> "$GITHUB_ENV"
+
+      - name: Run the action
+        id: qed
+        uses: ./action
+        with:
+          qed: node ${{ github.workspace }}/packages/cli/dist/qed.cjs
+          working-directory: ${{ env.KNOWN }}
+          base: HEAD
+          inputs: "200"
+          sign: "false"
+          comment: "false"
+          fail-on-divergence: "false"
+          artifact-name: qed-action-smoke
+
+      - name: It said what the repository says
+        env:
+          EXIT: ${{ steps.qed.outputs.exit-code }}
+          DIVERGED: ${{ steps.qed.outputs.diverged }}
+          REPORT: ${{ steps.qed.outputs.report }}
+          SARIF: ${{ steps.qed.outputs.sarif }}
+          BUNDLE: ${{ steps.qed.outputs.bundle }}
+        run: |
+          set -x
+          # rate changed at its boundary, and total diverges through it.
+          test "$EXIT" = 1
+          test "$DIVERGED" = 2
+          node -e '
+            const fs = require("fs");
+            const report = JSON.parse(fs.readFileSync(process.env.REPORT, "utf8"));
+            const total = report.result.runs.find((r) => r.symbol === "total");
+            if (total.via !== "pricing/rate.ts") throw new Error("total is not marked via rate");
+            if (total.line !== 2) throw new Error(`total is on line ${total.line}, not 2`);
+            const sarif = JSON.parse(fs.readFileSync(process.env.SARIF, "utf8"));
+            if (sarif.version !== "2.1.0") throw new Error("not SARIF 2.1.0");
+            const errors = sarif.runs[0].results.filter((r) => r.level === "error");
+            if (errors.length !== 2) throw new Error(`${errors.length} SARIF errors, not 2`);
+            const bundle = JSON.parse(fs.readFileSync(process.env.BUNDLE, "utf8"));
+            if (bundle.kind !== "qed.bundle/v1" || bundle.records.length !== 2) throw new Error("bundle is wrong");
+            console.log("report, SARIF and bundle agree with the repository");
+          '
+
+      - name: It fails the job when told to
+        id: strict
+        continue-on-error: true
+        uses: ./action
+        with:
+          qed: node ${{ github.workspace }}/packages/cli/dist/qed.cjs
+          working-directory: ${{ env.KNOWN }}
+          base: HEAD
+          inputs: "100"
+          sign: "false"
+          comment: "false"
+          annotate: "false"
+          artifact-name: qed-action-strict
+
+      - name: And it did
+        env:
+          OUTCOME: ${{ steps.strict.outcome }}
+        run: test "$OUTCOME" = failure
+
+  dogfood:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the CLI
+        run: pnpm build:cli
+
+      - name: QED checks QED
+        uses: ./action
+        with:
+          qed: node ${{ github.workspace }}/packages/cli/dist/qed.cjs
+          sarif: "true"
+          fail-on-divergence: "false"
+          artifact-name: qed-dogfood

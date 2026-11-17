@@ -4,7 +4,23 @@ Every change that alters what `qed` does, what it claims, or what a record
 contains. The version a record names as its engine is the one in
 `packages/cli/package.json`, and a release tag must match it.
 
-## 0.4.0 (unreleased)
+## 0.5.0 (unreleased)
+
+QED shows up where the review happens.
+
+- The QED GitHub Action (`RafiDr00/QED/action`) runs the check on a pull
+  request. It keeps one comment up to date with the verdicts, divergences
+  first. It annotates each divergence on its line, signs the records when the
+  job may, keeps the records and the bundle as an artifact, and uploads SARIF
+  when asked.
+- `qed check --json`, `--sarif` and `--markdown` write the run as data, as a
+  code scanning report and as a pull request comment.
+- Each verdict names the line its function starts on.
+- A run with nothing verifiable still writes its reports.
+- Every pull request to QED gets QED's own comment. A workflow tests the
+  action end to end against a repository with a known answer.
+
+## 0.4.0 (2026-11-17)
 
 The console shows what was really produced, and nothing claims what is not
 there.
