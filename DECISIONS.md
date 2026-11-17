@@ -674,3 +674,70 @@ that had nothing to do with cents. A value can now be named only when the
 code names it, as a mined constant, or when it is a boolean, null or
 undefined. No description is drawn from fewer than three diverging inputs;
 below that the line says so: "too few to say where".
+
+---
+
+## Signing: say who ran it, in a way anyone can check
+
+### D-059 · One Sigstore signature per run, binding every record
+
+`signer` and `rekorIndex` read `unsigned` and `not logged`. `qed check --sign`
+now has the job's OIDC identity certified by Sigstore's Fulcio, signs with
+it, and logs the signature in Rekor's public transparency log.
+
+What is signed is a manifest listing every record in the run by the sha256
+of its signing payload: the canonical record with `signer` and `rekorIndex`
+left blank. Those two are left out because they are only known once signing
+is done; the identity is in the certificate and the log index comes back from
+Rekor. `qed verify` checks them against the verified bundle instead, and the
+record's digest covers them like every other field. A record therefore fails
+when it is edited after signing (it is no longer listed), when its signer is
+rewritten to someone more trusted (it no longer matches the certificate), and
+when its log index is moved (it no longer matches the entry). Each case has a
+test in `tests/unit/signing.test.ts`.
+
+One signature per run, not per record: each signature is a Fulcio certificate
+and a public Rekor entry, and a run of thirty functions is one job with one
+identity. The bundle is written beside the records as
+`run-<id>.sigstore.json`.
+
+The `signer` field names the certificate's identity and its issuer together,
+because a subject means something only with who vouched for it. Signing
+needs an identity, so `--sign` without one exits 2 before the run starts
+rather than after it.
+
+### D-060 · A signature is checked offline, against a root the binary carries
+
+Checking a signature against Sigstore's live services would make `qed
+verify` need a network and trust in whoever answers. Instead the Sigstore
+public-good trusted root is fetched through TUF, which verifies it from the
+root of trust inside @sigstore/tuf, and is built into the binary. `qed
+verify` checks the certificate chain, the CT log entry, the signature and
+Rekor's inclusion proof and signed timestamp against it, with no network. CI
+proves that by verifying a freshly signed run inside `unshare --net`.
+
+The cost is that the root ages. A record signed after a key rotation the
+embedded root does not know about fails with a message naming the root's
+date, `pnpm refresh:trusted-root` and a rebuild fix it, and `--trusted-root
+<file>` takes a newer root without one. `qed check --sign` verifies its own
+signature against the embedded root before writing anything, so it never
+hands out a signature that the same binary cannot check.
+
+`--signer <identity>` requires an exact identity. Without it, verification
+proves a record was signed by *someone* Fulcio certified, which is not what
+an auditor needs, and the output says to name one.
+
+The offline verifier is tested against a real public bundle - npm's
+provenance for the `sigstore` package - and fails it when the payload, the
+log entry or the trusted root is changed.
+
+### D-061 · The release signs its checksums, and the installer checks them
+
+`SHA256SUMS` protected each binary against a corrupt download but not against
+whoever could replace both the binary and the file listing its checksum. The
+release workflow now signs `SHA256SUMS` with cosign as itself, and
+`install.sh`, when cosign is installed, requires that signature to come from
+this repository's `release.yml` run for a `v*` tag before it trusts any
+checksum. Without cosign it still checks the checksum and says the signature
+was not checked; `QED_REQUIRE_SIGNATURE=1` refuses instead. Releases from
+before signing install with a note saying so.

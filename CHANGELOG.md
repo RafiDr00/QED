@@ -4,7 +4,27 @@ Every change that alters what `qed` does, what it claims, or what a record
 contains. The version a record names as its engine is the one in
 `packages/cli/package.json`, and a release tag must match it.
 
-## 0.2.0 (unreleased)
+## 0.3.0 (unreleased)
+
+Records can now say who ran them, in a way anyone can check without asking us.
+
+- `qed check --sign` signs the run with Sigstore under the CI job's own OIDC
+  identity and logs it in Rekor. Each record's `signer` and `rekorIndex` name
+  the certificate's identity and the log entry. One signature covers the run.
+- `qed verify` checks a signed record's certificate chain, signature and
+  Rekor inclusion proof offline, against a Sigstore trusted root built into
+  the binary. `--signer` requires an exact signing identity.
+  `--trusted-root` takes a newer root.
+- A signed record fails verification when it is edited after signing, when
+  its signer is rewritten, or when its log index is moved, even with a
+  recomputed digest.
+- Release checksums are signed with cosign. `install.sh` checks the signature
+  when cosign is installed, and `QED_REQUIRE_SIGNATURE=1` refuses to install
+  without that check.
+- A new workflow signs a real run on every push and verifies it with the
+  network switched off.
+
+## 0.2.0 (2026-11-12)
 
 QED now verifies the shapes ordinary TypeScript is written in, and checks
 itself. Every case is in `tests/unit/coverage.test.ts`.

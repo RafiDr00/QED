@@ -10,6 +10,7 @@
     "*.ts",
     "packages/*/src/**/*",
     "packages/*/*.ts",
+    "packages/*/scripts/**/*",
     "apps/*/src/**/*",
     "apps/*/*.ts",
     "scripts/**/*",

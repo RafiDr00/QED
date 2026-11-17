@@ -27,9 +27,9 @@ import {
 export const DEFAULT_RECORDS_DIR = ".qed/records";
 
 /**
- * Signing against a CI provider's OIDC identity and logging to Rekor are not
- * built. The record says so in the fields that would carry them, rather than
- * leaving them blank for a reader to fill in.
+ * What an unsigned record carries where a signature's facts would go. A run
+ * made without `--sign` says so in those fields, rather than leaving them
+ * blank for a reader to fill in. signing.ts fills them when a run is signed.
  */
 export const UNSIGNED = "unsigned";
 export const NOT_LOGGED = "not logged";

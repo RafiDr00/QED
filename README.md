@@ -109,8 +109,21 @@ minute rather than hanging the run.
 and prints every digest on stderr so the run's log keeps a copy the records
 cannot rewrite. `verify` re-derives a record's digest from its own fields with
 the same function the console's Verify button uses, and compares it with the
-one you hold. Records are not signed: the signer reads `unsigned` and the
-Rekor index `not logged` until OIDC signing and Rekor logging are built.
+one you hold.
+
+`check --sign` signs the run with Sigstore. In GitHub Actions with
+`permissions: id-token: write`, or with a token in `SIGSTORE_ID_TOKEN`, the
+job's OIDC identity is certified by Fulcio and the signature is logged in
+Rekor. One signature covers the run: it is over a manifest of every record,
+written beside them as `run-<id>.sigstore.json`, and each record's `signer`
+and `rekorIndex` name the certificate's identity and the log entry. `verify`
+checks the certificate chain, the signature and the inclusion proof offline
+against the Sigstore trusted root built into the binary, and `--signer`
+requires an exact identity. Without `--sign`, the signer reads `unsigned` and
+the Rekor index `not logged`. `pnpm refresh:trusted-root` re-fetches the root
+through TUF; `verify --trusted-root <file>` takes a newer one without a
+rebuild. `.github/workflows/sigstore.yml` signs a real run on every push and
+verifies it with the network switched off.
 
 Exit codes: 0 nothing diverged (or the record verified), 1 something diverged
 (or the record was altered), 2 the run could not start or finish.
@@ -120,15 +133,18 @@ Exit codes: 0 nothing diverged (or the record verified), 1 something diverged
 `.github/workflows/release.yml` runs on a `v*` tag, or by hand with an existing
 tag. It builds the binary on Linux x64/arm64, macOS arm64/x64 and Windows x64,
 makes each one run a real check over `examples/ledger` and verify a record it
-wrote, and publishes them to GitHub Releases with `SHA256SUMS`. The tag must
+wrote, and publishes them to GitHub Releases with `SHA256SUMS`, signed with
+cosign as the release workflow into `SHA256SUMS.sigstore.json`. The tag must
 match `packages/cli/package.json`, because that version is the engine every
 record names.
 
 `apps/web/public/install.sh` is served from the site root. It downloads the
 binary for the machine, checks it against `SHA256SUMS`, runs it, and only then
-installs it. `QED_VERSION`, `QED_INSTALL_DIR` and `QED_DOWNLOAD_BASE` override
-the release, the destination and the source. Until a release is published, it
-has nothing to install.
+installs it. With cosign on the PATH it first checks that `SHA256SUMS` was
+signed by this repository's release workflow for a `v*` tag, and installs
+nothing if not. `QED_REQUIRE_SIGNATURE=1` refuses to install without that
+check. `QED_VERSION`, `QED_INSTALL_DIR` and `QED_DOWNLOAD_BASE` override the
+release, the destination and the source.
 
 ## CI
 

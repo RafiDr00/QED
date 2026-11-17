@@ -220,8 +220,12 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     title: "Attestations",
     body: [
       "Each function the run looked at produces a record in .qed/records: the verdict, the inputs, the controls, the tolerances and the engine version, under a digest computed from exactly those fields. Each digest is also printed in the run's log.",
-      "Recomputing the digest proves the record has not been altered since it was written — checked against the digest you hold, from the log, because anyone can rewrite a record and recompute a digest that matches it. A digest can be shortened to 16 hex characters, as below. It does not prove who wrote it — see the limits below.",
+      "Recomputing the digest proves the record has not been altered since it was written — checked against the digest you hold, from the log, because anyone can rewrite a record and recompute a digest that matches it. A digest can be shortened to 16 hex characters, as below.",
       "qed verify --digest sha256:9f2a1c84bd0e...7c31",
+      "In CI, --sign proves who wrote it. The run is signed with the job's own OIDC identity, certified by Sigstore's Fulcio and logged in the public Rekor transparency log, and each record names that identity and its log entry. One signature covers the whole run.",
+      "qed check --sign",
+      "Verifying a signed record checks the certificate chain, the signature and Rekor's inclusion proof with no network, against a Sigstore trusted root built into the binary. Name the workflow you trust with --signer, and a record signed by anything else fails.",
+      "qed verify --digest sha256:9f2a1c84bd0e...7c31 --signer https://github.com/acme/ledger/.github/workflows/ci.yml@refs/heads/main",
     ],
   },
   {
@@ -229,7 +233,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     title: "What is not built yet",
     body: [
       "QED is honest about its own state as well as about your code. Today the engine verifies pure TypeScript and JavaScript functions in a module and the relative imports it makes — the kind of code tax, pricing and ledger rules are written in.",
-      "Not yet built: signing against a CI provider's OIDC identity, logging to Rekor, resolving package imports, async functions, recursive parameter types, and coverage-guided generation. A package import is refused only by the functions that use it. Each of those is a reason the tool abstains today rather than a claim it quietly makes. Records say so: their signer is \"unsigned\" and their Rekor index \"not logged\".",
+      "Not yet built: resolving package imports, async functions, recursive parameter types, and coverage-guided generation. A package import is refused only by the functions that use it. Each of those is a reason the tool abstains today rather than a claim it quietly makes. Signing needs a CI identity: a record made without --sign says so, with the signer \"unsigned\" and the Rekor index \"not logged\".",
       "The abstain rate on the home page is measured from a real run, not estimated.",
     ],
   },

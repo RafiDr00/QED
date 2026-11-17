@@ -25,10 +25,10 @@ export interface CommandSpec {
 export const COMMANDS = {
   check: {
     named: ["base", "inputs", "tolerance", "records"],
-    switches: ["no-color"],
+    switches: ["no-color", "sign"],
   },
   repro: { named: ["base", "input"], switches: [] },
-  verify: { named: ["digest", "records"], switches: [] },
+  verify: { named: ["digest", "records", "signer", "trusted-root"], switches: [] },
 } as const satisfies Record<string, CommandSpec>;
 
 export type Command = keyof typeof COMMANDS;
