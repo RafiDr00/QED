@@ -152,9 +152,9 @@ describe("ABSTAINED carries the obstruction, never a guess", () => {
       "imports node:net",
     ],
     [
-      "an async function",
-      `export async function f(n: number): Promise<number> { return n; }`,
-      "is asynchronous",
+      "an async function waiting on something that never comes",
+      `export async function f(n: number): Promise<number> { await new Promise(() => {}); return n; }`,
+      "returns a promise that never settles",
     ],
   ];
 

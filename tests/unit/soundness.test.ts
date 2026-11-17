@@ -181,7 +181,7 @@ describe("agreement has to be about something", () => {
     expect(r.verdict).toEqual({
       state: "EQUIVALENT",
       inputs: 200,
-      strategy: "type-directed, corpus-seeded",
+      strategy: "type-directed, corpus-seeded, coverage-guided",
     });
   });
 });
@@ -226,5 +226,53 @@ describe("where a change bites is never invented", () => {
       }
     }
     expect(r.blastSummary ?? "").not.toMatch(/exactly when the input is -?\d{3,}/);
+  });
+});
+
+describe("an async function is compared on what it settles to", () => {
+  it("two async versions that resolve alike agree", () => {
+    const r = run(
+      fn("const x = await Promise.resolve(n); return x * 2;", "Promise<number>").replace("export function", "export async function"),
+      fn("return n + n;", "Promise<number>").replace("export function", "export async function"),
+    );
+    expect(r.verdict.state).toBe("EQUIVALENT");
+  });
+
+  it("two that resolve differently diverge, and the output says they resolved", () => {
+    const r = run(
+      fn("return n * 2;", "Promise<number>").replace("export function", "export async function"),
+      fn("return n * 3;", "Promise<number>").replace("export function", "export async function"),
+    );
+    expect(r.verdict.state).toBe("DIVERGED");
+    if (r.verdict.state !== "DIVERGED") return;
+    expect(r.verdict.counterexample.head).toMatch(/^resolves to /);
+  });
+
+  it("a function that now returns a promise of what it returned has changed", () => {
+    const r = run(fn("return n;", "number"), fn("return n;", "Promise<number>").replace("export function", "export async function"));
+    expect(r.verdict.state).toBe("DIVERGED");
+    if (r.verdict.state !== "DIVERGED") return;
+    expect(r.verdict.counterexample.head).toMatch(/^resolves to /);
+    expect(r.verdict.counterexample.base).not.toMatch(/resolves/);
+  });
+
+  it("a rejection is compared like a throw", () => {
+    const r = run(
+      fn('if (n < 0) throw new RangeError("neg"); return n;', "Promise<number>").replace("export function", "export async function"),
+      fn('if (n < 0) throw new TypeError("neg"); return n;', "Promise<number>").replace("export function", "export async function"),
+    );
+    expect(r.verdict.state).toBe("DIVERGED");
+    if (r.verdict.state !== "DIVERGED") return;
+    expect(r.verdict.counterexample.head).toContain("rejects with TypeError");
+  });
+
+  it("a denied call caught after an await is still an obstruction", () => {
+    const src = fn('try { await fetch("x"); } catch { return 0; } return n;', "Promise<number>").replace("export function", "export async function");
+    expect(run(src, src).verdict).toEqual({ state: "ABSTAINED", obstruction: "opens a network connection" });
+  });
+
+  it("a promise rejected and never handled does not stop the run", () => {
+    const src = fn('Promise.reject(new Error("x")); return n;', "number");
+    expect(run(src, src).verdict.state).toBe("EQUIVALENT");
   });
 });

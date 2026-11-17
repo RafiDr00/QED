@@ -50,7 +50,14 @@ function inputsLine(record: AttestationRecord): string {
       verdict.threw !== undefined && verdict.threw > 0
         ? `, ${formatCount(verdict.threw)} of them threw on both sides`
         : "";
-    return `${formatCount(verdict.inputs)}${threw} — ${record.inputStrategy}`;
+    const reach =
+      verdict.branches === undefined
+        ? ""
+        : `; ${verdict.branches.reached} of ${verdict.branches.of} branches reached` +
+          (verdict.branches.unreached !== undefined && verdict.branches.unreached.length > 0
+            ? `, not line ${verdict.branches.unreached.join(", ")}`
+            : "");
+    return `${formatCount(verdict.inputs)}${threw}${reach} — ${record.inputStrategy}`;
   }
   if (verdict.state === "DIVERGED") {
     const found = verdict.counterexample.foundAt;

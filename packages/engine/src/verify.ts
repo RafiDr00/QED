@@ -4,6 +4,7 @@ import type { Verdict } from "@qed/ui/model";
 import { blastRadius, describeBlast, type BlastRadius } from "./blast.js";
 import { equals, show, EXACT, type Tolerance } from "./compare.js";
 import { encodeArgs } from "./encode.js";
+import { explore, reachIn } from "./explore.js";
 import { dependencySources } from "./exports.js";
 import { generatorFor, mineCorpus } from "./generate.js";
 import {
@@ -131,9 +132,10 @@ function showOutcome(outcome: Observed): string {
   let shown: string;
   if (outcome.kind === "threw") {
     const e = outcome.value as { name?: string; message?: string } | undefined;
-    shown = e?.name ? `threw ${e.name}: ${e.message ?? ""}`.trim() : "threw";
+    const what = e?.name ? `${e.name}: ${e.message ?? ""}`.trim() : "";
+    shown = outcome.async === true ? `rejects with ${what || "an error"}` : what === "" ? "threw" : `threw ${what}`;
   } else {
-    shown = show(outcome.value);
+    shown = outcome.async === true ? `resolves to ${show(outcome.value)}` : show(outcome.value);
   }
   return outcome.calls === undefined
     ? shown
@@ -160,7 +162,13 @@ function sameOutcome(
   }
   if (a.kind !== b.kind) return false;
   // What was returned, and what was asked of every callback on the way.
-  const comparison = equals([a.value, a.calls], [b.value, b.calls], tolerance);
+  // A promise of a value is not the value: whether the result was awaited is
+  // compared along with what it was.
+  const comparison = equals(
+    [a.value, a.calls, a.async === true],
+    [b.value, b.calls, b.async === true],
+    tolerance,
+  );
   if (comparison.equal && applied) {
     for (const t of comparison.applied) applied.add(t);
   }
@@ -356,6 +364,15 @@ function verifyUnbounded(
     }
   }
 
+  // Inputs that reach branches the edges did not, chosen before the
+  // comparison and run first in it. Never more than half the run, so the
+  // random draws still have their say.
+  const explored = explore(pair.baseA, pair.headA, symbol, generation, {
+    budget: Math.min(inputs * 4, 4000),
+    seed: options.seed ?? 0,
+  });
+  const chosen = explored.kept.slice(0, Math.max(0, Math.floor(inputs / 2) - generation.examples.length));
+
   let blocked: string | undefined;
   let nondeterministic: string | undefined;
   // Inputs on which both sides returned, and on which both threw alike.
@@ -398,7 +415,7 @@ function verifyUnbounded(
       // The edges run first, so finding them does not depend on the seed. The
       // property takes one arbitrary - the whole argument list - so each
       // example is a one-element tuple holding that list.
-      examples: generation.examples.map((row): [unknown[]] => [row]),
+      examples: [...generation.examples, ...chosen].map((row): [unknown[]] => [row]),
     },
   );
 
@@ -418,12 +435,24 @@ function verifyUnbounded(
         `throws ${firstThrown ?? "an error"} on every generated input, so no result was compared`,
       );
     }
+    // Every input the verdict rests on ran through headA, so its counters
+    // say how much of the function the verdict covers.
+    const reach = reachIn(pair.headA, head, fileName, symbol);
     return {
       verdict: {
         state: "EQUIVALENT",
         inputs: details.numRuns,
-        strategy: "type-directed, corpus-seeded",
+        strategy: "type-directed, corpus-seeded, coverage-guided",
         ...(threw > 0 ? { threw } : {}),
+        ...(reach !== undefined && reach.of > 0
+          ? {
+              branches: {
+                reached: reach.reached,
+                of: reach.of,
+                ...(reach.unreached.length > 0 ? { unreached: reach.unreached } : {}),
+              },
+            }
+          : {}),
       },
       tolerancesApplied: [...applied],
       controls,
@@ -462,6 +491,7 @@ function verifyUnbounded(
         repro: reproCommand(fileName, symbol, minimal),
         foundAt: { index: details.numRuns, of: inputs },
         ...(radius ? { affects: describeBlast(radius) } : {}),
+        ...(radius?.sample ? { sample: radius.sample } : {}),
       },
     },
     tolerancesApplied: [...applied],

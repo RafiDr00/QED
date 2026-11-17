@@ -58,6 +58,20 @@ function canonicalVerdict(verdict: AttestationRecord["verdict"]): string {
       // signed in. With one, the fields are JSON-encoded, so a strategy
       // ending in ":threw=5" cannot pass for a count. The two forms cannot
       // collide: the old one continues with a digit, this one with "[".
+      // Branch reach is newer still, and signs as an object: "{" cannot be
+      // mistaken for the "[" form or the bare digit of the oldest one.
+      if (verdict.branches !== undefined) {
+        return `EQUIVALENT:${JSON.stringify({
+          inputs: verdict.inputs,
+          strategy: verdict.strategy ?? null,
+          threw: verdict.threw ?? null,
+          branches: {
+            reached: verdict.branches.reached,
+            of: verdict.branches.of,
+            unreached: verdict.branches.unreached ?? [],
+          },
+        })}`;
+      }
       if (verdict.threw !== undefined) {
         return `EQUIVALENT:${JSON.stringify([verdict.inputs, verdict.strategy ?? null, verdict.threw])}`;
       }
@@ -73,6 +87,9 @@ function canonicalVerdict(verdict: AttestationRecord["verdict"]): string {
         c.repro,
         c.foundAt ? `${c.foundAt.index}/${c.foundAt.of}` : "",
         c.affects ?? "",
+        // Appended only when present, so a record from before samples keeps
+        // the form it was signed in.
+        ...(c.sample !== undefined ? [JSON.stringify(c.sample)] : []),
       ])}`;
     }
     case "ABSTAINED":

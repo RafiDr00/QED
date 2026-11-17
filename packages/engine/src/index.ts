@@ -6,3 +6,5 @@ export * from "./verify.js";
 export * from "./blast.js";
 export * from "./run.js";
 export * from "./exports.js";
+export * from "./coverage.js";
+export * from "./explore.js";

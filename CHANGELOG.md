@@ -4,7 +4,25 @@ Every change that alters what `qed` does, what it claims, or what a record
 contains. The version a record names as its engine is the one in
 `packages/cli/package.json`, and a release tag must match it.
 
-## 0.5.0 (unreleased)
+## 0.6.0 (unreleased)
+
+An equivalence now says how much of the function it covers, and async code
+is verified.
+
+- Inputs are chosen by the branches they reach. Inputs that reach a branch
+  nothing before them did run first, and every input still comes from the
+  type-directed generator.
+- An EQUIVALENT says how many of the function's branches its inputs reached,
+  and names the line of any they never did. The strategy is "coverage-guided".
+- Async functions are compared on what they settle to. A function that now
+  returns a promise of what it used to return has diverged. A promise that
+  never settles abstains.
+- A promise the code rejects and never handles no longer ends the run.
+- A divergence carries the classified inputs around it, and the console
+  draws where each divergence bites, with a table of the same inputs.
+- Engines for other languages are not built; DECISIONS.md D-069 says why.
+
+## 0.5.0 (2026-11-17)
 
 QED shows up where the review happens.
 

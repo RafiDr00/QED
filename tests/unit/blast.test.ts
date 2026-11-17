@@ -82,3 +82,57 @@ describe("blast radius", () => {
     expect(r.blastSummary).toContain("order.qty");
   });
 });
+
+describe("the region, as points to plot", () => {
+  const base = `export function f(o: { qty: number; tier: "gold" | "silver" }): number {
+    if (o.tier === "gold" && o.qty > 100) return 0.85;
+    return 1;
+  }`;
+  const head = `export function f(o: { qty: number; tier: "gold" | "silver" }): number {
+    if (o.tier === "gold" && o.qty >= 100) return 0.8;
+    return 1;
+  }`;
+
+  it("carries the classified inputs along the fields the description names", () => {
+    const r = run(base, head);
+    const sample = r.blast?.sample;
+    expect(sample?.x).toBe("qty");
+    expect(sample?.y).toBe("tier");
+    expect(sample?.rules).toEqual([{ axis: "x", operator: "is at least", value: 100 }]);
+    const diverged = (sample?.points ?? []).filter(([, , d]) => d === 1);
+    expect(diverged.length).toBeGreaterThan(0);
+    // Every point it calls a divergence is one the description covers.
+    for (const [qty, tier] of diverged) {
+      expect(tier).toBe("gold");
+      expect(qty as number).toBeGreaterThanOrEqual(100);
+    }
+  });
+
+  it("is signed with the record, so a moved point breaks the digest", async () => {
+    const { reDeriveDigest } = await import("@qed/ui/model");
+    const r = run(base, head);
+    if (r.verdict.state !== "DIVERGED" || !r.verdict.counterexample.sample) throw new Error("no sample");
+    const record = {
+      symbol: "f", path: "s.ts", repository: "r", commit: "c", timestamp: "t",
+      verdict: r.verdict, inputStrategy: "s", controls: [], tolerances: [], engine: "e",
+      signer: "unsigned", rekorIndex: "not logged", digest: "",
+    };
+    const sample = r.verdict.counterexample.sample;
+    const moved = {
+      ...record,
+      verdict: {
+        ...r.verdict,
+        counterexample: { ...r.verdict.counterexample, sample: { ...sample, points: sample.points.slice(1) } },
+      },
+    };
+    expect(await reDeriveDigest(record)).not.toBe(await reDeriveDigest(moved));
+  });
+
+  it("has no plot when no condition describes the region", () => {
+    const r = run(
+      `export function f(n: number): number { return n; }`,
+      `export function f(n: number): number { return Math.sin(n) > 0.9999 ? 0 : n; }`,
+    );
+    expect(r.blast?.sample).toBeUndefined();
+  });
+});

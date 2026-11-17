@@ -26,7 +26,7 @@ import { fail, pass, rel, root, verifyDir, walk, type Gate } from "./kit.ts";
  */
 
 /** Functions QED verified in its own packages when this floor was last set. */
-const VERIFIED_FLOOR = 18;
+const VERIFIED_FLOOR = 22;
 
 /** Inputs per function. Enough to exercise determinism, cheap enough to run every time. */
 const INPUTS = 100;
