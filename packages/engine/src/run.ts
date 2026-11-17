@@ -28,6 +28,17 @@ export function exportedFunctions(source: string, fileName: string): string[] {
   return exportedFunctionsOf(file).map((f) => f.name);
 }
 
+/** Each exported function's name, with the 1-based line its declaration starts on. */
+export function exportedLines(source: string, fileName: string): Map<string, number> {
+  const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.ES2022, true);
+  return new Map(
+    exportedFunctionsOf(file).map(({ name, declaration }) => [
+      name,
+      file.getLineAndCharacterOfPosition(declaration.getStart(file)).line + 1,
+    ]),
+  );
+}
+
 export interface RunOptions extends VerifyOptions {
   /** Echoed at the top of the output. */
   readonly command?: string;
@@ -132,7 +143,8 @@ export function runPair(
 
   for (const module of modules) {
     const baseNames = exportedFunctions(module.base, module.path);
-    const headNames = new Set(exportedFunctions(module.head, module.path));
+    const headLines = exportedLines(module.head, module.path);
+    const headNames = new Set(headLines.keys());
 
     for (const symbol of baseNames) {
       changed++;
@@ -165,7 +177,14 @@ export function runPair(
         },
       );
       details.set(key, outcome);
-      runs.push({ path: module.path, symbol, ...via, verdict: outcome.verdict });
+      const line = headLines.get(symbol);
+      runs.push({
+        path: module.path,
+        symbol,
+        ...via,
+        ...(line !== undefined ? { line } : {}),
+        verdict: outcome.verdict,
+      });
     }
   }
 

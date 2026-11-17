@@ -139,6 +139,33 @@ so.
 Exit codes: 0 nothing diverged (or the record verified), 1 something diverged
 (or the record was altered), 2 the run could not start or finish.
 
+## The GitHub Action
+
+`action/action.yml` runs `qed check` on a pull request. It keeps one comment
+up to date with the verdicts, divergences first, each with its input and its
+repro line. It marks each divergence on the line its function starts with a
+workflow annotation, which needs no code scanning. It signs the records when
+the job has `id-token: write`, and keeps them with the audit bundle as an
+artifact. It uploads SARIF when `sarif: true`.
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+steps:
+  - uses: actions/checkout@v4
+    with: { fetch-depth: 0 }
+  - uses: RafiDr00/QED/action@v0.5.0
+```
+
+The action installs the release named by `version` with `install.sh`, from
+its own checkout. `qed` runs a given command instead, which is how
+`.github/workflows/qed.yml` tests it: against a repository with a known
+answer on every push, and on QED's own pull requests, where it reports
+without failing the build. `qed check --json`, `--sarif` and `--markdown`
+write the same run for other tools.
+
 ## Releasing the CLI
 
 `.github/workflows/release.yml` runs on a `v*` tag, or by hand with an existing

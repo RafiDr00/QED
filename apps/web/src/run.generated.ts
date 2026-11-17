@@ -15,11 +15,12 @@ export const GENERATED_RUN: RunResult = {
   "command": "qed check --base origin/main",
   "changedFunctions": 7,
   "verifiableFunctions": 4,
-  "duration": "0.6s",
+  "duration": "0.4s",
   "runs": [
     {
       "path": "billing/ledger.ts",
       "symbol": "computeVat",
+      "line": 7,
       "verdict": {
         "state": "EQUIVALENT",
         "inputs": 2000,
@@ -29,6 +30,7 @@ export const GENERATED_RUN: RunResult = {
     {
       "path": "billing/ledger.ts",
       "symbol": "roundHalfEven",
+      "line": 11,
       "verdict": {
         "state": "EQUIVALENT",
         "inputs": 2000,
@@ -38,6 +40,7 @@ export const GENERATED_RUN: RunResult = {
     {
       "path": "billing/ledger.ts",
       "symbol": "bulkRate",
+      "line": 19,
       "verdict": {
         "state": "DIVERGED",
         "counterexample": {
@@ -56,6 +59,7 @@ export const GENERATED_RUN: RunResult = {
     {
       "path": "billing/ledger.ts",
       "symbol": "applyDiscount",
+      "line": 27,
       "verdict": {
         "state": "EQUIVALENT",
         "inputs": 2000,
@@ -65,6 +69,7 @@ export const GENERATED_RUN: RunResult = {
     {
       "path": "orders/handlers.ts",
       "symbol": "createOrderId",
+      "line": 2,
       "verdict": {
         "state": "ABSTAINED",
         "obstruction": "depends on wall-clock time"
@@ -73,6 +78,7 @@ export const GENERATED_RUN: RunResult = {
     {
       "path": "orders/handlers.ts",
       "symbol": "pickWinner",
+      "line": 7,
       "verdict": {
         "state": "ABSTAINED",
         "obstruction": "returns a different answer for the same input"
@@ -81,6 +87,7 @@ export const GENERATED_RUN: RunResult = {
     {
       "path": "orders/handlers.ts",
       "symbol": "parseConfig",
+      "line": 12,
       "verdict": {
         "state": "ABSTAINED",
         "obstruction": "parameter `cfg` has no type annotation"

@@ -269,6 +269,44 @@ describe("qed verify", () => {
   });
 });
 
+describe("qed check --json --sarif --markdown", () => {
+  it("writes the run as data, as SARIF and as a pull request comment", async () => {
+    const out = join(repo, "reports");
+    const r = await qed(
+      repo, "check", "--base", "HEAD", "--inputs", "100", "--records", join(repo, "report-records"),
+      "--json", join(out, "report.json"), "--sarif", join(out, "qed.sarif"), "--markdown", join(out, "comment.md"),
+    );
+    expect(r.code).toBe(1);
+
+    const report = JSON.parse(readFileSync(join(out, "report.json"), "utf8")) as {
+      exitCode: number;
+      result: { runs: { symbol: string; line?: number }[] };
+    };
+    expect(report.exitCode).toBe(1);
+    // bulkRate starts on line 19 of the ledger example's head version.
+    expect(report.result.runs.find((run) => run.symbol === "bulkRate")?.line).toBe(19);
+
+    const sarif = JSON.parse(readFileSync(join(out, "qed.sarif"), "utf8")) as { version: string };
+    expect(sarif.version).toBe("2.1.0");
+    expect(readFileSync(join(out, "comment.md"), "utf8")).toContain("<!-- qed-check -->");
+  });
+
+  it("still writes a report when nothing verifiable changed", async () => {
+    const empty = mkdtempSync(join(tmpdir(), "qed-empty-"));
+    scratch.push(empty);
+    git(empty, "init", "-q");
+    git(empty, "config", "user.email", "qed@example.invalid");
+    git(empty, "config", "user.name", "QED test");
+    put(empty, "README.md", "hello\n");
+    git(empty, "add", "-A");
+    git(empty, "commit", "-q", "-m", "base");
+    const md = join(empty, "comment.md");
+    const r = await qed(empty, "check", "--base", "HEAD", "--markdown", md);
+    expect(r.code).toBe(0);
+    expect(readFileSync(md, "utf8")).toContain("No verifiable file changed");
+  });
+});
+
 describe("qed export", () => {
   it("bundles what a check left behind, and prints the bundle's digest", async () => {
     const records = join(repo, "export-records");

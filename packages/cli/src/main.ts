@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { renderRun, exitCodeFor } from "@qed/cli-render";
 import { verifyRecord, type AttestationRecord } from "@qed/ui/model";
@@ -61,8 +61,10 @@ import {
   writeSignedRun,
   EMBEDDED_ROOT,
   SigningError,
+  type SignatureFacts,
 } from "./signing.js";
 import { buildBundle, runSummary, writeBundle, writeRunSummary } from "./export.js";
+import { jsonReport, markdownReport, sarifReport, type ReportContext } from "./report.js";
 import { ENGINE } from "./version.js";
 
 /**
@@ -77,6 +79,7 @@ const USAGE = `qed - deterministic verification
 
   qed check [--base <ref>] [--inputs <n>] [--tolerance float=<e>,rel=<e>]
             [--records <dir>] [--no-color] [--sign]
+            [--json <file>] [--sarif <file>] [--markdown <file>]
       Verify every exported function that changed against <ref>, and write
       one record per function to <dir> (default .qed/records). A tolerance
       loosens a comparison only where one needs it, and every one applied
@@ -84,6 +87,8 @@ const USAGE = `qed - deterministic verification
       --sign signs the run with Sigstore under this job's OIDC identity and
       logs it in Rekor. It needs GitHub Actions with id-token: write, or a
       token in SIGSTORE_ID_TOKEN.
+      --json, --sarif and --markdown also write the run as data, as SARIF
+      for code scanning, and as a pull request comment.
       Exits 1 only when something diverged; 2 when the run could not start.
 
   qed repro <file> <symbol> --input '<json-array>' [--base <ref>]
@@ -199,6 +204,23 @@ async function check(flags: Flags): Promise<number> {
   const started = startedAt.getTime();
   const pairs = gather(ref, cwd);
   if (pairs.length === 0) {
+    // Still a report: a CI step that posts the comment should say there was
+    // nothing to verify, not post nothing and leave a reader guessing.
+    const runUrl = ciRunUrl();
+    writeReports(flags, cwd, {
+      result: {
+        command: echoed(ref, flags),
+        changedFunctions: 0,
+        verifiableFunctions: 0,
+        duration: formatDuration(Date.now() - started),
+        runs: [],
+      },
+      records: [],
+      exitCode: 0,
+      engine: ENGINE,
+      recordsDir: "none written",
+      ...(runUrl !== undefined ? { runUrl } : {}),
+    });
     process.stdout.write(
       `No verifiable file changed against ${ref}.\n`,
     );
@@ -237,9 +259,11 @@ async function check(flags: Flags): Promise<number> {
 
   let records = built;
   let signedNote = "";
+  let signed: SignatureFacts | undefined;
   if (signing) {
     const sealed = await sealRecords(built);
     records = sealed.records;
+    signed = sealed.facts;
     mkdirSync(dir, { recursive: true });
     const runFile = writeSignedRun(dir, sealed.run);
     signedNote =
@@ -251,6 +275,20 @@ async function check(flags: Flags): Promise<number> {
   // How the run was invoked and how long it took, which records cannot
   // carry. `qed export` puts it in the bundle the console reads.
   writeRunSummary(dir, runSummary(result, records, context));
+
+  // The same run, for machines and for the pull request.
+  const runUrl = ciRunUrl();
+  const report: ReportContext = {
+    result,
+    records,
+    exitCode: exitCodeFor(result),
+    engine: ENGINE,
+    // Forward slashes: the report is read on GitHub, not in a Windows shell.
+    recordsDir: shown(cwd, dir).split(sep).join("/"),
+    ...(signed !== undefined ? { signed } : {}),
+    ...(runUrl !== undefined ? { runUrl } : {}),
+  };
+  writeReports(flags, cwd, report);
 
   process.stdout.write(renderRun(result, { color }));
 
@@ -265,6 +303,26 @@ async function check(flags: Flags): Promise<number> {
       signedNote,
   );
   return exitCodeFor(result);
+}
+
+/** The CI run's page, on GitHub Actions. */
+function ciRunUrl(): string | undefined {
+  const { GITHUB_SERVER_URL: server, GITHUB_REPOSITORY: repo, GITHUB_RUN_ID: id } = process.env;
+  return server && repo && id ? `${server}/${repo}/actions/runs/${id}` : undefined;
+}
+
+/** `--json`, `--sarif` and `--markdown`, each to the file it names. */
+function writeReports(flags: Flags, cwd: string, report: ReportContext): void {
+  const write = (flag: string, text: string) => {
+    const path = flags.named.get(flag);
+    if (path === undefined) return;
+    const absolute = resolve(cwd, path);
+    mkdirSync(dirname(absolute), { recursive: true });
+    writeFileSync(absolute, text, "utf8");
+  };
+  write("json", `${JSON.stringify(jsonReport(report), null, 2)}\n`);
+  write("sarif", `${JSON.stringify(sarifReport(report), null, 2)}\n`);
+  write("markdown", markdownReport(report, renderRun(report.result, { color: false })));
 }
 
 /**

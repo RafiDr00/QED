@@ -34,7 +34,9 @@ export function Docs() {
                 <h2 className="t-heading">{section.title}</h2>
               </div>
               {section.body.map((paragraph) =>
-                paragraph.startsWith("qed ") || paragraph.startsWith("curl ") ? (
+                paragraph.startsWith("qed ") ||
+                paragraph.startsWith("curl ") ||
+                paragraph.startsWith("uses: ") ? (
                   <pre
                     key={paragraph}
                     className="web-docs-code t-mono"

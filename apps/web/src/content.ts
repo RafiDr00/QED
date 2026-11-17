@@ -179,6 +179,7 @@ export const DOCS_NAV: readonly { id: string; title: string }[] = [
   { id: "tolerances", title: "Tolerances" },
   { id: "attestations", title: "Attestations" },
   { id: "limits", title: "What is not built yet" },
+  { id: "github", title: "On pull requests" },
   { id: "exit-codes", title: "Exit codes" },
 ];
 
@@ -243,6 +244,17 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       "QED is honest about its own state as well as about your code. Today the engine verifies pure TypeScript and JavaScript functions in a module and the relative imports it makes — the kind of code tax, pricing and ledger rules are written in.",
       "Not yet built: resolving package imports, async functions, recursive parameter types, and coverage-guided generation. A package import is refused only by the functions that use it. Each of those is a reason the tool abstains today rather than a claim it quietly makes. Signing needs a CI identity: a record made without --sign says so, with the signer \"unsigned\" and the Rekor index \"not logged\".",
       "The abstain rate on the home page is measured from a real run, not estimated.",
+    ],
+  },
+  {
+    id: "github",
+    title: "On pull requests",
+    body: [
+      "The QED action runs the check on every pull request. It keeps one comment up to date with the verdicts, divergences first, each with the input that shows it and the command that reproduces it. It marks each divergence on the line its function starts, signs the records when the job may, and keeps them, with the audit bundle, as an artifact.",
+      "uses: RafiDr00/QED/action@v0.5.0",
+      "Check out with fetch-depth: 0 so the base is there to compare against. Give the job pull-requests: write for the comment and id-token: write to sign. A divergence fails the job unless fail-on-divergence is false; abstaining never does.",
+      "Outside the action, the same run is written for other tools. --json is the run as data, --sarif is a report for code scanning, and --markdown is the pull request comment.",
+      "qed check --json report.json --sarif qed.sarif --markdown comment.md",
     ],
   },
   {

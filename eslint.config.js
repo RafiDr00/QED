@@ -59,7 +59,7 @@ export default tseslint.config(
     rules: { "qed/no-raw-design-values": "off" },
   },
   {
-    files: ["**/*.js"],
+    files: ["**/*.js", "**/*.mjs"],
     ...tseslint.configs.disableTypeChecked,
   },
 );
