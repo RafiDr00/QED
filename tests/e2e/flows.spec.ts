@@ -1,7 +1,12 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+
 import { expect, test, type Page } from "@playwright/test";
 
 import { rawColor } from "@qed/tokens";
-import { summarise } from "@qed/ui/model";
+import { summarise, type QedBundle } from "@qed/ui/model";
+
+import { EXAMPLE_BUNDLE } from "../../apps/console/src/bundle.generated.ts";
 
 import { ABSTAIN_RATE, HERO_RUN } from "../../apps/web/src/content.ts";
 import { contrastHex, parseColor } from "../../scripts/color.ts";
@@ -103,6 +108,85 @@ test("verifying an attestation reports back", async ({ page }) => {
 
   await card.getByRole("button", { name: /verify independently/i }).click();
   await expect(status).toHaveText(/Re-derived and matched at/);
+});
+
+/** The console's own bundle, edited the way a reader or a forger might. */
+function edited(change: (bundle: QedBundle) => void): Buffer {
+  const bundle = JSON.parse(EXAMPLE_BUNDLE) as QedBundle;
+  change(bundle);
+  return Buffer.from(JSON.stringify(bundle, null, 2));
+}
+
+const picker = (page: Page) => page.locator('input[type="file"]');
+
+test("the console shows the bundle it was built with, and names it", async ({ page }) => {
+  await page.goto(`${CONSOLE}/#/run`);
+  await expect(page.getByTestId("bundle-source")).toContainText("the example run");
+  await expect(page.getByText("examples/ledger", { exact: true })).toBeVisible();
+  // The run the engine really produced, not a typed-in one.
+  await expect(page.getByLabel(/command output/i).first()).toContainText("bulkRate");
+});
+
+test("a reader can open their own bundle, and a bad file is refused with the reason", async ({
+  page,
+}) => {
+  await page.goto(`${CONSOLE}/#/verdicts`);
+
+  await picker(page).setInputFiles({
+    name: "payments.json",
+    mimeType: "application/json",
+    buffer: edited((bundle) => {
+      (bundle as { repository: string }).repository = "acme/payments";
+    }),
+  });
+  await expect(page.getByTestId("bundle-source")).toContainText("payments.json");
+  await expect(page.getByText("acme/payments", { exact: true })).toBeVisible();
+
+  await picker(page).setInputFiles({
+    name: "not-a-bundle.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify({ hello: "world" })),
+  });
+  await expect(page.getByRole("alert")).toContainText("not-a-bundle.json was not opened.");
+  // A refused file leaves the bundle that was open, open.
+  await expect(page.getByTestId("bundle-source")).toContainText("payments.json");
+
+  await page.getByRole("button", { name: "Back to the example" }).click();
+  await expect(page.getByTestId("bundle-source")).toContainText("the example run");
+});
+
+test("a record edited inside a bundle fails verification in the browser", async ({ page }) => {
+  await page.goto(`${CONSOLE}/#/attestations`);
+  await picker(page).setInputFiles({
+    name: "edited.json",
+    mimeType: "application/json",
+    buffer: edited((bundle) => {
+      const record = bundle.records.find((r) => r.symbol === "computeVat");
+      if (record) (record as unknown as { tolerances: string[] }).tolerances = ["float ε 1"];
+    }),
+  });
+
+  const card = page
+    .getByRole("article")
+    .filter({ has: page.getByRole("heading", { name: "computeVat" }) });
+  await card.getByRole("button", { name: /verify independently/i }).click();
+  await expect(card.getByRole("status")).toContainText("Do not rely on it");
+  await expect(card).toHaveAttribute("data-verification", "mismatch");
+});
+
+test("the export downloads the bundle it shows, under the digest it prints", async ({ page }) => {
+  await page.goto(`${CONSOLE}/#/export`);
+  const expected = `sha256:${createHash("sha256").update(EXAMPLE_BUNDLE).digest("hex")}`;
+  await expect(page.getByTestId("bundle-digest")).toHaveText(expected);
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Download bundle" }).click(),
+  ]);
+  expect(download.suggestedFilename()).toBe("qed-bundle.json");
+  const path = await download.path();
+  expect(readFileSync(path, "utf8")).toBe(EXAMPLE_BUNDLE);
+  await expect(page.getByTestId("export-status")).toContainText("Saved qed-bundle.json");
 });
 
 test("the theme survives a reload, and the first paint is already right", async ({

@@ -741,3 +741,53 @@ this repository's `release.yml` run for a `v*` tag before it trusts any
 checksum. Without cosign it still checks the checksum and says the signature
 was not checked; `QED_REQUIRE_SIGNATURE=1` refuses instead. Releases from
 before signing install with a note saying so.
+
+---
+
+## The console reads what was really produced
+
+### D-062 · The console renders an audit bundle, and takes its numbers from the records
+
+The console rendered typed-in fixtures: a release history nobody ran, an
+attestation signed by `github-actions (OIDC)` at Rekor index `78 440 213`,
+engine `qed 0.4.1`, a `coverage-guided` strategy the engine does not have, and
+an export listing five files that did not exist. It now renders a bundle.
+
+`qed check` writes a run summary beside its records - the command it echoed
+and how long it took, which no record carries - and `qed export` gathers
+every record, summary and signed run in a directory, plus the tags pointing
+at each commit, into one JSON file. One file rather than the five-file
+directory first planned: an assessor receives one thing, the console opens
+one thing, and its digest is the digest of what was handed over.
+
+The console opens the bundle `pnpm generate:run` builds from a real engine
+run over `examples/ledger`, through the same parser as a file a reader opens
+by button or by dropping it on the page. Every count is computed from the
+records. A summary is not signed, so it contributes the command and the
+duration and nothing else: editing it cannot change a count, and a digest it
+lists that the bundle does not hold is reported, not counted.
+
+In the browser, Verify re-derives the digest and, for a signed record, checks
+that a signed run in the bundle lists the record exactly as it reads. The
+certificate chain and Rekor's inclusion proof need `qed verify`, and the card
+says so rather than implying it checked them. A record edited inside a bundle
+fails there, which is how the failed-verification state is now reached in the
+product: by a real edit, not by a fixture carrying a wrong digest.
+
+The abstain rate on the release view was abstained over *verifiable*
+functions, which counts the abstained ones out of their own denominator. It is
+now abstained over changed functions, the ratio the home page prints.
+
+### D-063 · Nothing claims what is not there
+
+An unsigned record's card said SIGNED ATTESTATION on the `proof-dim` ground
+the design system reserves for a signed record. It now says UNSIGNED
+ATTESTATION on the plain raised ground, with a neutral rule where the `proof`
+one would be, and its foot reads "not in rekor" rather than "rekor #not
+logged". A signed record looks exactly as before.
+
+The pricing section offered Team and Enterprise tiers with prices and
+features - retained records, a release dashboard, audit export - that are
+either not built or are free in the CLI and console. The free tier now lists
+what exists. The others are marked PLANNED, carry no price and no button, and
+list nothing a reader could mistake for available.

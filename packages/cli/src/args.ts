@@ -29,6 +29,7 @@ export const COMMANDS = {
   },
   repro: { named: ["base", "input"], switches: [] },
   verify: { named: ["digest", "records", "signer", "trusted-root"], switches: [] },
+  export: { named: ["records", "out"], switches: [] },
 } as const satisfies Record<string, CommandSpec>;
 
 export type Command = keyof typeof COMMANDS;

@@ -150,6 +150,10 @@ a.qed-button[data-variant="primary"] {
   text-align: center;
 }
 
+.web-tier-planned {
+  color: var(--ink-muted);
+}
+
 .web-footer {
   border-top: var(--border-hair) solid var(--rule);
   margin-top: var(--space-16);

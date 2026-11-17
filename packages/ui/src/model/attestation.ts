@@ -33,7 +33,12 @@ export interface AttestationRecord {
 export type VerificationState =
   | { readonly status: "idle" }
   | { readonly status: "checking" }
-  | { readonly status: "verified"; readonly checkedAt: string }
+  | {
+      readonly status: "verified";
+      readonly checkedAt: string;
+      /** What else was checked, or could not be, in one or two sentences. */
+      readonly detail?: string;
+    }
   | { readonly status: "mismatch"; readonly detail: string }
   | { readonly status: "error"; readonly detail: string };
 

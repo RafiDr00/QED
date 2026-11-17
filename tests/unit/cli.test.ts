@@ -8,6 +8,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -135,7 +136,10 @@ describe("qed check", () => {
 
   it("writes one record per function, and prints each digest", () => {
     const listed = digestsOf(run.stderr);
-    const files = readdirSync(join(repo, ".qed/records"));
+    const all = readdirSync(join(repo, ".qed/records"));
+    // Beside the records, one summary of how the run was invoked.
+    const files = all.filter((name) => !name.startsWith("run-"));
+    expect(all.filter((name) => name.startsWith("run-"))).toHaveLength(1);
     expect(run.stderr).toMatch(/^\d+ records written to \.qed[\\/]records/);
     expect(listed.length).toBeGreaterThan(3);
     expect(files.sort()).toEqual(listed.map((l) => `${l.digest.slice(7)}.json`).sort());
@@ -262,6 +266,30 @@ describe("qed verify", () => {
     const r = await qed(repo, "verify", "--digest", "f".repeat(64), "--records", records);
     expect(r.code).toBe(2);
     expect(r.stderr).toContain("No record");
+  });
+});
+
+describe("qed export", () => {
+  it("bundles what a check left behind, and prints the bundle's digest", async () => {
+    const records = join(repo, "export-records");
+    await qed(repo, "check", "--base", "HEAD", "--inputs", "100", "--records", records);
+    const out = join(repo, "qed-bundle.json");
+    const r = await qed(repo, "export", "--records", records, "--out", out);
+    expect(r.code, r.stderr).toBe(0);
+
+    const text = readFileSync(out, "utf8");
+    expect(r.stdout).toContain(`sha256:${createHash("sha256").update(text).digest("hex")}`);
+    const bundle = JSON.parse(text) as { kind: string; runs: { command: string }[]; records: unknown[] };
+    expect(bundle.kind).toBe("qed.bundle/v1");
+    // The check wrote a summary of how it was invoked; the export carried it.
+    expect(bundle.runs[0]?.command).toContain("qed check --base HEAD");
+    expect(bundle.records.length).toBeGreaterThan(3);
+  });
+
+  it("exits 2 when there is nothing to export", async () => {
+    const r = await qed(repo, "export", "--records", join(repo, "no-such-records"));
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("There are no records");
   });
 });
 

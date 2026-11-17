@@ -36,6 +36,7 @@ import {
   repositoryName,
   repositoryRoot,
   resolveRef,
+  tagsAt,
   trackedFiles,
   workingCommit,
   GitError,
@@ -61,6 +62,7 @@ import {
   EMBEDDED_ROOT,
   SigningError,
 } from "./signing.js";
+import { buildBundle, runSummary, writeBundle, writeRunSummary } from "./export.js";
 import { ENGINE } from "./version.js";
 
 /**
@@ -95,6 +97,11 @@ const USAGE = `qed - deterministic verification
       A signed record's signature, certificate and Rekor inclusion proof are
       checked too, offline. --signer requires that exact signing identity.
       Exits 1 when the record has been altered or its signature fails.
+
+  qed export [--records <dir>] [--out <file>]
+      Gather every record, run summary and signature in <dir> into one
+      audit bundle (default .qed/bundle.json) and print its digest. The
+      console opens it with no network.
 
   qed --help
 `;
@@ -241,6 +248,9 @@ async function check(flags: Flags): Promise<number> {
       `  signature bundle ${shown(cwd, runFile)}\n`;
   }
   writeRecords(dir, records);
+  // How the run was invoked and how long it took, which records cannot
+  // carry. `qed export` puts it in the bundle the console reads.
+  writeRunSummary(dir, runSummary(result, records, context));
 
   process.stdout.write(renderRun(result, { color }));
 
@@ -514,6 +524,38 @@ async function verifyCommand(flags: Flags): Promise<number> {
   }
 }
 
+/**
+ * `qed export`: one file holding everything a set of runs left behind, for
+ * the console, for an assessor, or for an archive.
+ */
+function exportCommand(flags: Flags): number {
+  if (flags.positional.length > 0) {
+    throw new UsageError(`qed export takes no file or symbol: '${flags.positional[0]}'.`);
+  }
+  const cwd = process.cwd();
+  let root: string | undefined;
+  try {
+    root = repositoryRoot(cwd);
+  } catch {
+    root = undefined;
+  }
+  const flagged = flags.named.get("records");
+  const dir =
+    flagged !== undefined ? resolve(cwd, flagged) : join(root ?? cwd, DEFAULT_RECORDS_DIR);
+  const outFlag = flags.named.get("out");
+  const out = outFlag !== undefined ? resolve(cwd, outFlag) : join(dir, "..", "bundle.json");
+
+  const bundle = buildBundle(dir, (commit) => (root === undefined ? [] : tagsAt(commit, root)));
+  const written = writeBundle(out, bundle);
+  process.stdout.write(
+    `bundle written to ${shown(cwd, written.path)}\n` +
+      `  ${written.digest}\n` +
+      `  ${written.records} ${written.records === 1 ? "record" : "records"} from ` +
+      `${written.runs} ${written.runs === 1 ? "run" : "runs"}, ${written.signed} signed\n`,
+  );
+  return 0;
+}
+
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
   const [command, ...rest] = argv;
@@ -539,6 +581,8 @@ async function main(): Promise<number> {
         return repro(flags);
       case "verify":
         return await verifyCommand(flags);
+      case "export":
+        return exportCommand(flags);
     }
   } catch (error) {
     if (error instanceof UsageError) {

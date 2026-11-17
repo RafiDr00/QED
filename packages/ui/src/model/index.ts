@@ -2,3 +2,4 @@
 export * from "./verdict.js";
 export * from "./terminal.js";
 export * from "./attestation.js";
+export * from "./bundle.js";

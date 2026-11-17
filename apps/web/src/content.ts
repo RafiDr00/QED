@@ -116,47 +116,53 @@ export interface Tier {
   readonly summary: string;
   readonly includes: readonly string[];
   readonly primary?: boolean;
+  /**
+   * False for a tier nobody can buy yet. It is shown as planned, with no
+   * button: a price beside a feature that does not exist is a claim, and the
+   * page makes none it cannot keep.
+   */
+  readonly available: boolean;
 }
 
 export const TIERS: readonly Tier[] = [
   {
     name: "Open",
     price: "$0",
-    unit: "public repositories",
-    summary: "The whole engine. Runs on your CI, signs to the public log.",
+    unit: "the CLI, on your own CI",
+    summary: "The whole engine, the signed records and the console. Nothing to sign up for.",
     includes: [
-      "All three verdicts",
+      "All three verdicts, with their evidence",
       "Records with a recomputable digest",
-      "GitHub and GitLab CI",
-      "Community support",
+      "Sigstore signing and Rekor logging in GitHub Actions",
+      "Offline verification, against a built-in trusted root",
+      "The console, opening your exported bundle",
     ],
+    primary: true,
+    available: true,
   },
   {
     name: "Team",
-    price: "$40",
-    unit: "per developer, per month",
-    summary: "Private repositories, retained records, and the console.",
+    price: "Planned",
+    unit: "not available yet",
+    summary: "Records kept for you, and one console a team shares.",
     includes: [
-      "Everything in Open",
-      "Private repositories",
-      "12 months of retained records",
-      "Release evidence dashboard",
-      "Email support, one business day",
+      "Hosted record retention",
+      "A shared console across repositories",
+      "Email support",
     ],
-    primary: true,
+    available: false,
   },
   {
     name: "Enterprise",
-    price: "Talk to us",
-    unit: "annual, per organisation",
-    summary: "The audit bundle, and the controls an assessor asks for.",
+    price: "Planned",
+    unit: "not available yet",
+    summary: "The controls an assessor asks for, around the same records.",
     includes: [
-      "Everything in Team",
-      "Audit export, PDF and JSON",
-      "7 years of retained records",
+      "Long-term retention for audit",
       "SSO and SCIM",
       "Self-hosted runners",
     ],
+    available: false,
   },
 ];
 
@@ -226,6 +232,8 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       "qed check --sign",
       "Verifying a signed record checks the certificate chain, the signature and Rekor's inclusion proof with no network, against a Sigstore trusted root built into the binary. Name the workflow you trust with --signer, and a record signed by anything else fails.",
       "qed verify --digest sha256:9f2a1c84bd0e...7c31 --signer https://github.com/acme/ledger/.github/workflows/ci.yml@refs/heads/main",
+      "One file carries all of it to an assessor: every record, how each run was invoked, the signatures and the tags pointing at each commit. The console opens it with no network and takes every count from the records themselves.",
+      "qed export --out qed-bundle.json",
     ],
   },
   {
