@@ -141,3 +141,84 @@
   overflow-wrap: anywhere;
   margin: var(--space-4) 0;
 }
+
+/*
+ * Where a divergence bites. Marks carry the state by shape - filled for a
+ * disagreement, hollow for an agreement - and colour repeats it. Axes,
+ * gridlines and rules stay recessive. DECISIONS.md D-068.
+ */
+.con-map {
+  margin-top: var(--space-6);
+}
+
+.con-map-legend {
+  display: flex;
+  gap: var(--space-6);
+  margin: var(--space-3) 0;
+  color: var(--ink-muted);
+}
+
+.con-map-legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.con-map-key {
+  width: var(--space-3);
+  height: var(--space-3);
+}
+
+.con-map-plot {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.con-map-diverged {
+  fill: var(--break);
+  stroke: var(--bg);
+  stroke-width: var(--border-hair);
+}
+
+.con-map-agreed {
+  fill: none;
+  stroke: var(--ink-muted);
+  stroke-width: var(--border-hair);
+}
+
+.con-map-axis {
+  stroke: var(--rule-strong);
+  stroke-width: var(--border-hair);
+}
+
+.con-map-grid {
+  stroke: var(--rule);
+  stroke-width: var(--border-hair);
+}
+
+.con-map-rule {
+  stroke: var(--ink);
+  stroke-width: var(--border-hair);
+  stroke-dasharray: var(--space-1) var(--space-1);
+}
+
+.con-map-tick,
+.con-map-name {
+  fill: var(--ink-muted);
+  font-family: var(--type-mono-sm-family);
+  font-size: var(--type-mono-sm-size);
+}
+
+.con-map-name {
+  fill: var(--ink);
+}
+
+.con-map-table {
+  margin-top: var(--space-3);
+}
+
+.con-map-table summary {
+  cursor: pointer;
+  color: var(--ink-muted);
+}

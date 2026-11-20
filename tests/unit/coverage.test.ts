@@ -233,3 +233,70 @@ describe("a change reaches the files that import it", () => {
     expect(r.blastSummary).toContain('`tier` is "gold"');
   });
 });
+
+describe("how much of the function the verdict covers", () => {
+  it("says how many branches the inputs reached", () => {
+    const src = `export function f(n: number): number { if (n > 0) return 1; return n === 0 ? 0 : -1; }`;
+    const r = verify({ fileName: "m.ts", symbol: "f", base: src, head: src }, { inputs: 200 });
+    expect(r.verdict).toMatchObject({
+      state: "EQUIVALENT",
+      strategy: "type-directed, corpus-seeded, coverage-guided",
+      branches: { reached: 4, of: 4 },
+    });
+  });
+
+  it("names the line of a branch no input could reach", () => {
+    const src = [
+      "export function f(n: number): number {",
+      "  if (n !== n && n === n) {",
+      "    return 1;",
+      "  }",
+      "  return 2;",
+      "}",
+    ].join("\n");
+    const r = verify({ fileName: "m.ts", symbol: "f", base: src, head: src }, { inputs: 200 });
+    if (r.verdict.state !== "EQUIVALENT") throw new Error(r.verdict.state);
+    expect(r.verdict.branches?.reached).toBeLessThan(r.verdict.branches?.of ?? 0);
+    expect(r.verdict.branches?.unreached).toContain(2);
+  });
+
+  it("makes no branch claim about a function with no branches", () => {
+    const src = `export function f(n: number): number { return n + 1; }`;
+    const r = verify({ fileName: "m.ts", symbol: "f", base: src, head: src }, { inputs: 100 });
+    expect(r.verdict).not.toHaveProperty("branches");
+  });
+
+  it("puts the branch reach into the record's digest", async () => {
+    const { reDeriveDigest } = await import("@qed/ui/model");
+    const src = `export function f(n: number): number { return n > 0 ? 1 : 0; }`;
+    const r = verify({ fileName: "m.ts", symbol: "f", base: src, head: src }, { inputs: 100 });
+    const record = {
+      symbol: "f", path: "m.ts", repository: "r", commit: "c", timestamp: "t",
+      verdict: r.verdict, inputStrategy: "s", controls: [], tolerances: [], engine: "e",
+      signer: "unsigned", rekorIndex: "not logged", digest: "",
+    };
+    if (r.verdict.state !== "EQUIVALENT" || !r.verdict.branches) throw new Error("expected branches");
+    const claimedMore = { ...record, verdict: { ...r.verdict, branches: { ...r.verdict.branches, reached: 99 } } };
+    expect(await reDeriveDigest(record)).not.toBe(await reDeriveDigest(claimedMore));
+  });
+});
+
+describe("coverage-guided selection", () => {
+  it("keeps inputs that reach a branch nothing before them did, and only those", async () => {
+    const { explore, loadModule } = await import("@qed/engine");
+    const src = `export function f(n: number, s: string): string {
+      if (n > 500000) return "big";
+      if (s.length > 5) return "long";
+      return "other";
+    }`;
+    const g = generatorFor(src, "m.ts", "f");
+    if (g.kind !== "ok") throw new Error(g.obstruction);
+    const base = loadModule(src, "m.ts");
+    const head = loadModule(src, "m.ts");
+    const { kept, tried } = explore(base, head, "f", g, { budget: 400, seed: 0 });
+    expect(tried).toBeGreaterThan(0);
+    expect(kept.length).toBeLessThan(tried);
+    // Whatever was kept reached something new: no two kept inputs are the same.
+    expect(new Set(kept.map((k) => JSON.stringify(k))).size).toBe(kept.length);
+  });
+});

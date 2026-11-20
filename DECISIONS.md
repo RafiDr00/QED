@@ -844,3 +844,92 @@ through it. It checks the exit code, the counts, the line, the SARIF, the
 bundle, and that the strict setting fails the job. It also runs the action on
 every pull request to QED itself. There it reports without failing the
 build, because most of QED's diffs change behaviour on purpose.
+
+---
+
+## Evidence an equivalence can stand on
+
+### D-066 · Inputs are chosen by the branches they reach, and the verdict says how many
+
+An EQUIVALENT rested on a count of inputs. Two thousand inputs that all took
+the same path are two thousand copies of the same evidence, and the count
+could not tell the difference.
+
+The module under test is now compiled with a counter at every branch: each
+arm of `if` and `?:`, the right side of `&&`, `||` and `??`, each `case`, each
+loop body, each `catch`, each inner function. A TypeScript transform inserts
+them rather than V8's precise coverage, which slows every function in the
+process once it is on and reports differently depending on what has been
+compiled. Counters go after a function's directive prologue so "use strict"
+keeps working, and constructors are left alone because a statement ahead of
+`super()` changes how parameter properties are emitted.
+
+Before the comparison, up to four times as many inputs as it will use are
+drawn from the same generator. Each runs through both versions, and an input
+is kept when it reaches a branch, in either version, that nothing before it
+reached. Kept inputs run first, and they never take more than half the run.
+The engine only selects and never mutates: a value spliced together by hand
+could break the declared type, such as one arm of a discriminated union
+carrying the other's fields. A divergence found on an input no caller can
+construct would be a false claim.
+
+After the comparison, the counters say how much of the function the inputs
+the verdict rests on reached. The verdict carries `branches: { reached, of,
+unreached }`, with the lines of any branch never entered. A function with no
+branches makes no branch claim. The strategy reads "type-directed,
+corpus-seeded, coverage-guided", which the console's old fixture claimed
+before it was true.
+
+### D-067 · An async function is compared on what it settles to
+
+Async functions abstained as "is asynchronous". Each sandbox context now has
+its own microtask queue, with Node's `microtaskMode: "afterEvaluate"`, so
+running an empty script in it runs every `await` the function has left. The
+engine stays synchronous, and the host's own microtasks are untouched.
+Handlers that settle the promise are created inside the sandbox's realm, so
+their reactions queue where the drain runs.
+
+A fulfilled promise is compared on its value and a rejected one on its
+error. Whether the result came from a promise is compared too, because a
+function that used to return `0` and now returns a promise of `0` has changed
+what every caller gets. A promise still pending after the drain is waiting on
+something that will never come, since timers and the network are denied, and
+the function abstains: "returns a promise that never settles". A denied call
+caught after an `await` is still an obstruction. A promise the code rejects
+and never handles used to reach Node's unhandled-rejection handler and end
+the run. Rejections from a sandbox's realm are now ignored there, and the
+process's own still fail as before. `queueMicrotask` stays denied: an error
+thrown in one is reported out of band, where no comparison can see it.
+
+### D-068 · Where a change bites is drawn, from the record
+
+A divergence's description - "exactly when `qty` is at least 100 and `tier`
+is gold" - is now backed by its data. The counterexample carries up to a
+hundred diverging and a hundred agreeing inputs from the classification the
+description came from, along the one or two fields it names, with the
+thresholds it draws. The digest covers them, so a moved point breaks the
+record. Values JSON cannot carry, such as NaN and Infinity, are left out and
+counted. With no description there are no axes, and nothing is drawn.
+
+The console's Verdicts view plots them. A diverging input is a filled mark
+and an agreeing one is hollow, so the state is carried by shape and colour
+repeats it: glyph first, colour second. The colours are the design system's
+`break` and `ink-muted`. The chart palette validator passes them on
+colour-blind separation, normal-vision separation and contrast in both
+themes. It flags the grey as reading grey, which is the intent: agreement is
+the neutral ground a divergence stands out from, not a second category. A
+number axis is symmetric-log, because generated inputs span single digits to
+a million and a boundary at 100 would otherwise vanish. Tick labels are kept
+only where they have room. Every mark has a hover label, and the same inputs
+are one click away as a table.
+
+### D-069 · Engines for other languages are not built
+
+The plan ended with Go and Python engines behind the same record format.
+They are not built. Each is the size of everything in `packages/engine`:
+a sandbox with the same controls, a type-directed generator, a comparator
+with the same strictness, and its own soundness corpus. A thin one would
+claim EQUIVALENT on code it does not understand, which is the one thing this
+repository is built not to do. The record format, the signing, the bundle and
+the console are language-neutral, so an engine for another language has a
+place to plug in when it is built properly.

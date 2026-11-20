@@ -99,6 +99,19 @@ export function recordProblem(value: unknown): string | undefined {
   if (v["state"] === "EQUIVALENT" && v["threw"] !== undefined && typeof v["threw"] !== "number") {
     return "an EQUIVALENT verdict's throw count is not a number";
   }
+  if (v["state"] === "EQUIVALENT" && v["branches"] !== undefined) {
+    const b = v["branches"] as Record<string, unknown> | null;
+    if (
+      typeof b !== "object" ||
+      b === null ||
+      typeof b["reached"] !== "number" ||
+      typeof b["of"] !== "number" ||
+      (b["unreached"] !== undefined &&
+        !(Array.isArray(b["unreached"]) && (b["unreached"] as unknown[]).every((n) => typeof n === "number")))
+    ) {
+      return "an EQUIVALENT verdict's branch reach is malformed";
+    }
+  }
   if (v["state"] === "ABSTAINED" && !isString(v["obstruction"])) {
     return "an ABSTAINED verdict has no obstruction";
   }
@@ -107,6 +120,13 @@ export function recordProblem(value: unknown): string | undefined {
     if (typeof c !== "object" || c === null) return "a DIVERGED verdict has no counterexample";
     for (const key of ["input", "base", "head", "repro"]) {
       if (!isString(c[key])) return `'verdict.counterexample.${key}' is missing`;
+    }
+    const sample = c["sample"] as Record<string, unknown> | null | undefined;
+    if (
+      sample !== undefined &&
+      (typeof sample !== "object" || sample === null || !isString(sample["x"]) || !Array.isArray(sample["points"]))
+    ) {
+      return "'verdict.counterexample.sample' is malformed";
     }
   }
   return undefined;

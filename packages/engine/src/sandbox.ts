@@ -1,6 +1,8 @@
 import { createContext, Script, type Context } from "node:vm";
+import process from "node:process";
 import ts from "typescript";
 
+import { COUNTERS, instrument, type Branch } from "./coverage.js";
 import { callbacksIn, cloneArgs } from "./encode.js";
 
 /**
@@ -183,6 +185,8 @@ export type Resolver = (
 interface Compiled {
   readonly script: Script;
   readonly fileName: string;
+  /** Where the branch counters are, when the module was compiled with them. */
+  readonly branches: readonly Branch[];
 }
 
 type Wrapper = (
@@ -235,11 +239,17 @@ export function withinBudget<T>(work: () => T, ms: number): T {
 /** Transpiling the same text thousands of times was 45% of a run. */
 const compileCache = new Map<string, Compiled>();
 
-function compile(source: string, fileName: string): Compiled {
-  const key = `${fileName}\u0000${source}`;
+/**
+ * Transpiles a module once. The module under test is compiled with branch
+ * counters; its pinned dependencies are not, because what the verdict reports
+ * is how much of the function itself the inputs reached.
+ */
+function compile(source: string, fileName: string, counted = false): Compiled {
+  const key = `${counted ? "counted" : "plain"}\u0000${fileName}\u0000${source}`;
   const cached = compileCache.get(key);
   if (cached) return cached;
 
+  const branches: Branch[] = [];
   const transpiled = ts.transpileModule(source, {
     fileName,
     compilerOptions: {
@@ -252,6 +262,7 @@ function compile(source: string, fileName: string): Compiled {
       jsx: ts.JsxEmit.ReactJSX,
     },
     reportDiagnostics: true,
+    ...(counted ? { transformers: { before: [instrument(branches)] } } : {}),
   });
 
   const syntaxError = transpiled.diagnostics?.find(
@@ -277,7 +288,7 @@ ${transpiled.outputText}
     const message = error instanceof Error ? error.message : String(error);
     throw new ObstructionError(`does not compile: ${message}`);
   }
-  const compiled: Compiled = { script, fileName };
+  const compiled: Compiled = { script, fileName, branches };
   compileCache.set(key, compiled);
   return compiled;
 }
@@ -295,7 +306,31 @@ export interface Sandbox {
   readonly wrappers: Map<string, Wrapper>;
   /** Set when anything denied was reached, even if the code caught it. */
   readonly trap: Trap;
+  /** How often each branch of the module under test ran, since last reset. */
+  readonly counts: Uint32Array;
+  /** Attaches settling handlers to a promise, from inside the sandbox's realm. */
+  readonly settle: (promise: unknown, box: Settled) => void;
 }
+
+/** What became of a promise once the sandbox's microtasks ran. */
+export interface Settled {
+  state: "pending" | "fulfilled" | "rejected";
+  value: unknown;
+}
+
+/** Runs nothing; evaluating it drains an afterEvaluate context's microtasks. */
+const drainScript = new Script("undefined");
+
+/*
+ * Code under test can start a promise and never handle its rejection. Node
+ * ends the process on an unhandled rejection, so one such function stopped a
+ * whole run. A rejection from a sandbox's realm is the code under test's
+ * business, not the run's, and is ignored here; this process's own
+ * rejections are rethrown, which is what Node would have done.
+ */
+process.on("unhandledRejection", (reason, promise) => {
+  if (promise instanceof Promise) throw reason;
+});
 
 /** Evaluates a compiled wrapper in a context, once. */
 function wrapperFor(compiled: Compiled, context: Context): Wrapper {
@@ -423,9 +458,23 @@ export function loadModule(
   controls: Controls = DEFAULT_CONTROLS,
   resolver?: Resolver,
 ): Sandbox {
-  const compiled = compile(source, fileName);
+  const compiled = compile(source, fileName, true);
   const trap: Trap = { obstruction: undefined };
-  const context = createContext(globalsFor(controls, trap));
+  const counts = new Uint32Array(compiled.branches.length);
+  // Its own microtask queue, drained whenever a script runs in it: an async
+  // function settles before the engine looks at it, with no event loop.
+  const context = createContext(
+    { ...globalsFor(controls, trap), [COUNTERS]: counts },
+    { microtaskMode: "afterEvaluate" },
+  );
+  // Created inside the sandbox's realm, so the reactions are queued on the
+  // sandbox's own microtask queue - the one a drain runs.
+  const settle = new Script(
+    `(promise, box) => { promise.then(
+      (value) => { box.state = "fulfilled"; box.value = value; },
+      (error) => { box.state = "rejected"; box.value = error; },
+    ); }`,
+  ).runInContext(context) as Sandbox["settle"];
   const sandbox: Sandbox = {
     context,
     compiled,
@@ -435,6 +484,8 @@ export function loadModule(
     wrapper: wrapperFor(compiled, context),
     wrappers: new Map(),
     trap,
+    counts,
+    settle,
   };
 
   // Prove it loads before anyone asks for a function out of it.
@@ -484,6 +535,51 @@ export interface CallOutcome {
    * received. Absent when the arguments held no callback.
    */
   readonly calls?: readonly unknown[][][];
+  /**
+   * True when the function returned a promise and this is what it settled to.
+   * A function that now returns a promise of what it used to return has
+   * changed what every caller gets, so this is compared too.
+   */
+  readonly async?: boolean;
+}
+
+/**
+ * What an async function settled to. DECISIONS.md D-067.
+ *
+ * The sandbox's context has its own microtask queue, drained when a script
+ * runs in it, so evaluating an empty script runs every `await` the function
+ * has left. Timers and the network are denied, so nothing it could wait for
+ * lies outside that queue. A promise still pending after the drain is waiting
+ * on something that will never come, and is said to be.
+ */
+function settled(sandbox: Sandbox, promise: unknown): CallOutcome {
+  const box: Settled = { state: "pending", value: undefined };
+  sandbox.settle(promise, box);
+  drainScript.runInContext(sandbox.context);
+
+  const blocked = (obstruction: string): CallOutcome => ({
+    kind: "threw",
+    value: undefined,
+    obstruction,
+  });
+  const caught = tripped(sandbox);
+  if (caught !== undefined) return blocked(caught);
+
+  switch (box.state) {
+    case "pending":
+      return blocked("returns a promise that never settles");
+    case "rejected": {
+      if (box.value instanceof ObstructionError) return blocked(box.value.obstruction);
+      const missing = missingGlobal(box.value);
+      if (missing !== undefined) return blocked(missing);
+      return { kind: "threw", value: describeError(box.value), async: true };
+    }
+    case "fulfilled": {
+      const reason = incomparable(box.value);
+      if (reason !== undefined) return blocked(reason);
+      return { kind: "returned", value: box.value, async: true };
+    }
+  }
 }
 
 /** Invokes on a fresh copy of the arguments and notes what callbacks saw. */
@@ -620,8 +716,10 @@ function invoke(
   try {
     const value = (target as (...a: readonly unknown[]) => unknown)(...args);
     if (isThenable(value)) {
-      silence(value);
-      return blocked("is asynchronous");
+      if (Object.prototype.toString.call(value) !== "[object Promise]") {
+        return blocked("returns a thenable that is not a promise, which QED cannot settle");
+      }
+      return settled(sandbox, value);
     }
     outcome = { kind: "returned", value };
   } catch (error) {

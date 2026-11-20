@@ -109,9 +109,32 @@ export function c(n: number): number { return n; }`);
     expect(callFunction(s, "f", [])).toEqual({ kind: "returned", value: undefined });
   });
 
-  it("calls an async function an obstruction instead of comparing a promise", () => {
-    const s = load(`export async function f(): Promise<number> { return 1; }`);
-    expect(callFunction(s, "f", []).obstruction).toBe("is asynchronous");
+  it("settles an async function, and says the result came from a promise", () => {
+    const s = load(`export async function f(n: number): Promise<number> { const x = await Promise.resolve(n); return x * 2; }`);
+    expect(callFunction(s, "f", [21])).toEqual({ kind: "returned", value: 42, async: true });
+  });
+
+  it("reports a rejection as an outcome of the promise", () => {
+    const s = load(`export async function f(): Promise<number> { await null; throw new RangeError("nope"); }`);
+    expect(callFunction(s, "f", [])).toEqual({
+      kind: "threw",
+      value: { name: "RangeError", message: "nope" },
+      async: true,
+    });
+  });
+
+  it("calls a promise that never settles an obstruction", () => {
+    const s = load(`export async function f(): Promise<number> { await new Promise(() => {}); return 1; }`);
+    expect(callFunction(s, "f", []).obstruction).toBe("returns a promise that never settles");
+  });
+
+  it("counts the branches the module under test takes", () => {
+    const s = load(`export function f(n: number): number { if (n > 0) return 1; return n === 0 ? 0 : -1; }`);
+    callFunction(s, "f", [5]);
+    const kinds = s.compiled.branches.map((b) => b.kind);
+    expect(kinds).toEqual(["function", "then", "else", "true", "false"]);
+    const hit = s.compiled.branches.filter((b) => (s.counts[b.id] ?? 0) > 0).map((b) => b.kind);
+    expect(hit).toEqual(["function", "then"]);
   });
 
   it("reports a module that does not compile", () => {

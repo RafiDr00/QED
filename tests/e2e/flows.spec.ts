@@ -174,6 +174,18 @@ test("a record edited inside a bundle fails verification in the browser", async 
   await expect(card).toHaveAttribute("data-verification", "mismatch");
 });
 
+test("the verdicts view draws where each divergence bites, with a table behind it", async ({ page }) => {
+  await page.goto(`${CONSOLE}/#/verdicts`);
+  const figure = page.getByRole("figure");
+  await expect(figure).toHaveCount(1);
+  await expect(figure).toContainText("classified inputs for bulkRate, along qty and tier");
+  await expect(figure.getByRole("img")).toBeVisible();
+  // Identity is never colour alone: a legend names both marks.
+  await expect(figure.getByRole("list", { name: "Legend" })).toContainText("the two versions disagree");
+  await figure.getByText("The same inputs as a table").click();
+  await expect(figure.getByRole("table")).toContainText("disagree");
+});
+
 test("the export downloads the bundle it shows, under the digest it prints", async ({ page }) => {
   await page.goto(`${CONSOLE}/#/export`);
   const expected = `sha256:${createHash("sha256").update(EXAMPLE_BUNDLE).digest("hex")}`;

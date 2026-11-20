@@ -13,6 +13,32 @@ export const VERDICT_STATES = ["EQUIVALENT", "DIVERGED", "ABSTAINED"] as const;
 export type VerdictState = (typeof VERDICT_STATES)[number];
 
 /** The minimised counterexample. Four labelled lines, repro copyable as-is. */
+/** A plottable value: what JSON keeps as itself. */
+export type SampleValue = number | string | boolean | null;
+
+/**
+ * Inputs classified around a divergence, along the one or two fields its
+ * description names, so a reader can see the region rather than only read it.
+ * Capped, and drawn from the same classification the description came from.
+ * DECISIONS.md D-068.
+ */
+export interface DivergenceSample {
+  /** The field on the horizontal axis, as the description names it. */
+  readonly x: string;
+  /** The second field, when the description names two. */
+  readonly y?: string;
+  /** [x value, y value or null, 1 when the two versions disagreed there]. */
+  readonly points: readonly (readonly [SampleValue, SampleValue, 0 | 1])[];
+  /** Thresholds the description draws, as rules on their axis. */
+  readonly rules?: readonly {
+    readonly axis: "x" | "y";
+    readonly operator: "is at least" | "is more than";
+    readonly value: number;
+  }[];
+  /** Classified inputs left out because JSON cannot carry them (NaN, Infinity). */
+  readonly omitted?: number;
+}
+
 export interface Counterexample {
   /** The input, formatted the way the engine printed it. */
   readonly input: string;
@@ -34,6 +60,8 @@ export interface Counterexample {
    * DECISIONS.md D-040.
    */
   readonly affects?: string;
+  /** Where it diverges, as points to plot. */
+  readonly sample?: DivergenceSample;
 }
 
 /** Proven: the engine compared `inputs` generated inputs and found no difference. */
@@ -51,6 +79,19 @@ export interface EquivalentVerdict {
    * the error path. Absent when none threw. DECISIONS.md D-050.
    */
   readonly threw?: number;
+  /**
+   * How much of the function the inputs reached: branches entered at least
+   * once, of the branches the function has, in the version that ships. An
+   * equivalence over inputs that never took a branch says nothing about that
+   * branch, and this says which lines those were. Absent when the function
+   * has no branches. DECISIONS.md D-066.
+   */
+  readonly branches?: {
+    readonly reached: number;
+    readonly of: number;
+    /** Lines of branches no input reached, at most eight. */
+    readonly unreached?: readonly number[];
+  };
 }
 
 /** Broken: the engine found a difference and minimised it. */
@@ -137,10 +178,14 @@ export function formatCount(n: number): string {
 
 /** "2,000 inputs", or "2,000 inputs · 160 threw" when some agreed by throwing. */
 export function inputsEvidence(verdict: EquivalentVerdict): string {
-  const count = `${formatCount(verdict.inputs)} inputs`;
-  return verdict.threw !== undefined && verdict.threw > 0
-    ? `${count} · ${formatCount(verdict.threw)} threw`
-    : count;
+  const parts = [`${formatCount(verdict.inputs)} inputs`];
+  if (verdict.threw !== undefined && verdict.threw > 0) {
+    parts.push(`${formatCount(verdict.threw)} threw`);
+  }
+  if (verdict.branches !== undefined) {
+    parts.push(`${verdict.branches.reached}/${verdict.branches.of} branches`);
+  }
+  return parts.join(" · ");
 }
 
 /**

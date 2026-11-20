@@ -242,7 +242,8 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     title: "What is not built yet",
     body: [
       "QED is honest about its own state as well as about your code. Today the engine verifies pure TypeScript and JavaScript functions in a module and the relative imports it makes — the kind of code tax, pricing and ledger rules are written in.",
-      "Not yet built: resolving package imports, async functions, recursive parameter types, and coverage-guided generation. A package import is refused only by the functions that use it. Each of those is a reason the tool abstains today rather than a claim it quietly makes. Signing needs a CI identity: a record made without --sign says so, with the signer \"unsigned\" and the Rekor index \"not logged\".",
+      "Not yet built: resolving package imports, recursive parameter types, and engines for languages other than TypeScript and JavaScript. A package import is refused only by the functions that use it. Each of those is a reason the tool abstains today rather than a claim it quietly makes. Signing needs a CI identity: a record made without --sign says so, with the signer \"unsigned\" and the Rekor index \"not logged\".",
+      "An equivalence says how much of the function its inputs reached: the branches they entered, of the branches it has, and the line of any they never did. Async functions are compared on what they settle to, and a function that now returns a promise of what it used to return has changed.",
       "The abstain rate on the home page is measured from a real run, not estimated.",
     ],
   },

@@ -1,6 +1,8 @@
 import fc from "fast-check";
 
 import { show, type Tolerance } from "./compare.js";
+import type { DivergenceSample, SampleValue } from "@qed/ui/model";
+
 import type { Corpus, Generation } from "./generate.js";
 import { examine, type Finding } from "./verify.js";
 
@@ -28,6 +30,8 @@ export interface Condition {
 }
 
 export interface BlastRadius {
+  /** The classified inputs, along the fields the conditions name. */
+  readonly sample?: DivergenceSample;
   /** Inputs classified while measuring. */
   readonly sampled: number;
   readonly diverging: number;
@@ -225,11 +229,65 @@ export function blastRadius(
   if (diverging.length === 0 || classified === 0) return undefined;
 
   const { conditions, exact } = describe(diverging, agreeing, corpus);
+  const plotted = sampleOf(conditions, diverging, agreeing);
   return {
     sampled: classified,
     diverging: diverging.length,
     conditions,
     exact,
+    ...(plotted !== undefined ? { sample: plotted } : {}),
+  };
+}
+
+/** Points per side: enough to see a region, few enough for a record. */
+const SAMPLE_CAP = 100;
+
+const plottable = (value: unknown): SampleValue | undefined => {
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  if (typeof value === "string" || typeof value === "boolean" || value === null) return value;
+  return undefined;
+};
+
+/**
+ * The classified inputs along the one or two fields the description names.
+ * No description, no axes: then there is nothing to plot that would not
+ * invent a dimension.
+ */
+function sampleOf(
+  conditions: readonly Condition[],
+  diverging: readonly Leaf[][],
+  agreeing: readonly Leaf[][],
+): DivergenceSample | undefined {
+  const [x, y] = [...new Set(conditions.map((c) => c.path))];
+  if (x === undefined) return undefined;
+
+  const points: [SampleValue, SampleValue, 0 | 1][] = [];
+  let omitted = 0;
+  const add = (rows: readonly Leaf[][], diverged: 0 | 1) => {
+    for (const row of rows.slice(0, SAMPLE_CAP)) {
+      const px = plottable(valueAt(row, x));
+      const py = y === undefined ? null : plottable(valueAt(row, y));
+      if (px === undefined || py === undefined) {
+        omitted++;
+        continue;
+      }
+      points.push([px, py, diverged]);
+    }
+  };
+  add(diverging, 1);
+  add(agreeing, 0);
+
+  const rules = conditions.flatMap((c) =>
+    (c.operator === "is at least" || c.operator === "is more than") && typeof c.value === "number"
+      ? [{ axis: c.path === x ? ("x" as const) : ("y" as const), operator: c.operator, value: c.value }]
+      : [],
+  );
+  return {
+    x,
+    ...(y !== undefined ? { y } : {}),
+    points,
+    ...(rules.length > 0 ? { rules } : {}),
+    ...(omitted > 0 ? { omitted } : {}),
   };
 }
 
